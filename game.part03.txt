@@ -1,0 +1,200 @@
+    $('layoutSelection').addEventListener('change',event=>{if(touchEditor&&TOUCH_ITEMS[event.target.value]){touchEditor.selected=event.target.value;applyTouchCustomization();}});
+    for(const id of ['layoutSize','layoutOpacity'])$(id).addEventListener('input',event=>{
+      if(!touchEditor)return;const value=Number(event.target.value)/100;if(!Number.isFinite(value))return;
+      if(id==='layoutOpacity')touchEditor.draft.opacity=clamp(value,.35,1);
+      else if(touchEditor.selected==='stick')touchEditor.draft.stickScale=clamp(value,.8,1.6);
+      else touchEditor.draft.sizes[touchEditor.selected]=clamp(value,.75,1.6);
+      applyTouchCustomization();
+    });
+    ui.overlay.addEventListener('input',changeTouchCustomization);
+  }
+
+  const touchLabel=(action,label)=>touchActive?label:keyLabel(profile.settings.bindings[action]);
+  function touchControlsWanted(){
+    if(touchEditor)return true;const mode=profile.settings.touchControls;if(mode==='on')return true;if(mode==='off')return false;
+    return matchMedia('(pointer:coarse)').matches||((window.navigator?.maxTouchPoints||0)>0&&Math.min(innerWidth,innerHeight)<900);
+  }
+  function updateTouchLayout(){
+    const previous=touchActive;touchActive=touchControlsWanted();const portrait=innerHeight>innerWidth;
+    if(touchEditor&&lastViewportPortrait!==null&&lastViewportPortrait!==portrait)finishTouchDrag(false);
+    document.body.classList.toggle('touch-ui',touchActive);document.body.classList.toggle('touch-portrait',touchActive&&portrait);document.body.classList.toggle('touch-landscape',touchActive&&!portrait);
+    document.documentElement.style.setProperty('--game-height',`${innerHeight}px`);
+    if(touchActive&&lastViewportPortrait!==null&&lastViewportPortrait!==portrait&&running)pauseMission();
+    else if(previous!==touchActive)clearInputs();lastViewportPortrait=portrait;applyTouchCustomization();
+  }
+  function applyTouchLook(dx,dy){
+    if(!running||!Number.isFinite(dx)||!Number.isFinite(dy))return;
+    const sensitivity=profile.settings.touchSensitivity;
+    targetYaw-=clamp(dx,-90,90)*.005*sensitivity;
+    altitudeTarget=clamp(altitudeTarget-clamp(dy,-90,90)*.09*sensitivity*(profile.settings.invertY?-1:1),CFG.minAltitude,flightCeiling());
+  }
+  function releaseCapture(element,id){if(id===null)return;try{if(element?.hasPointerCapture?.(id))element.releasePointerCapture(id)}catch(_){}}
+  function resetTouchInputs(){
+    const oldStick=stickId,oldFire=fireTouchId,oldUp=touchOwners.up,oldDown=touchOwners.down;
+    stickId=fireTouchId=null;touchOwners.up=touchOwners.down=null;touchBoost=false;
+    $('stick').classList.remove('engaged','boosting');$('fire').classList.remove('held');$('up').classList.remove('held');$('down').classList.remove('held');$('touchBoost').classList.remove('active');$('touchBoost').setAttribute('aria-pressed','false');
+    releaseCapture($('stick'),oldStick);releaseCapture($('fire'),oldFire);releaseCapture($('up'),oldUp);releaseCapture($('down'),oldDown);
+  }
+  function touchBoostToggle(){
+    if(!running)return;touchBoost=!touchBoost;$('touchBoost').classList.toggle('active',touchBoost);$('touchBoost').setAttribute('aria-pressed',String(touchBoost));
+    $('stick').classList.toggle('boosting',touchBoost);if(touchBoost)notify('Takviye açık · çubuğu ileri it.');
+  }
+  function packEnvironment(root){
+    if(!touchActive||root.userData.touchPacked||!root.userData.flightColliders)return;
+    const groups=new Map();for(const object of root.children){
+      if(!object.isMesh||object.isInstancedMesh||object.geometry?.type!=='BoxGeometry'||Array.isArray(object.material))continue;
+      const key=object.material.uuid+JSON.stringify(object.geometry.parameters)+object.castShadow+object.receiveShadow;
+      if(!groups.has(key))groups.set(key,[]);groups.get(key).push(object);
+    }
+    for(const group of groups.values()){
+      if(group.length<4)continue;const source=group[0],batch=new T.InstancedMesh(source.geometry,source.material,group.length);
+      batch.castShadow=source.castShadow;batch.receiveShadow=source.receiveShadow;batch.frustumCulled=false;
+      group.forEach((object,i)=>{object.updateMatrix();batch.setMatrixAt(i,object.matrix);root.remove(object);if(i&&object.geometry!==source.geometry)object.geometry.dispose();});root.add(batch);
+    }
+    root.userData.touchPacked=true;
+  }
+  function phoneControlsHTML(){
+    return `<div class="phone-control-guide"><div><b>SOL ÇUBUK</b><span>Yukarı / aşağı: ileri / geri. Sağa / sola: drone’u döndür.</span></div><div><b>SAĞ EKRANI SÜRÜKLE</b><span>Yatay: yön değiştir. Dikey: yüksel / alçal.</span></div><div><b>ATEŞE BASILI TUT + SÜRÜKLE</b><span>Seri ateş ederken aynı parmakla yönünü ve irtifanı ayarla. Bırakınca atış durur.</span></div><div><b>TAKVİYE</b><span>Bir kez dokun, ardından çubuğu ileri it. Çubuğu bırakınca takviye kapanır.</span></div><div><b>FÜZE / DOLDUR</b><span>Hedefe bak; FIRLAT yazınca FÜZE’ye dokun. DOLDUR şarjörü yeniler.</span></div><div><b>KAMERA / İNİŞ</b><span>Üstteki kamera düğmesi FPV’yi değiştirir. Büyük Kaçış’ta tamir alanına yaklaşınca İN / TAMİR’e dokun.</span></div><div><b>KUMANDA DÜZENİ</b><span>Ayarlar → Telefon kumandası: boyut ve görünürlük. Kumandaları yerleştir: sürükle, tek tek boyutlandır ve kaydet.</span></div></div>`;
+  }
+  function phoneHomeHTML(){
+    if(!touchActive)return '';
+    return `<div class="phone-home-card"><div><strong>TELEFON KUMANDASI HAZIR</strong><p>Yatay ekran daha geniş görüş sağlar. Sol çubukla uç; ateşe basılı tutup sürükleyerek yönünü ayarla.</p></div><div>${document.documentElement.requestFullscreen?actionButton('fullscreen',document.fullscreenElement?'PENCEREYE DÖN':'TAM EKRAN','compact'):''}${actionButton('controls','DOKUNMATİK KILAVUZ','compact')}${actionButton('touch-layout','KUMANDA DÜZENİ','compact')}</div></div>`;
+  }
+  function setTouchQuality(){
+    if(!renderer)return;
+    const mode=profile.settings.quality,pixels=Math.max(1,innerWidth*innerHeight);
+    const cap=touchActive?(mode==='high'?1.5:mode==='low'?.9:1.1):2;
+    const budget=touchActive?(mode==='high'?1800000:mode==='low'?750000:1150000):Infinity;
+    const ratio=Math.min(cap,(devicePixelRatio||1)*profile.settings.resolution,Math.sqrt(budget/pixels));
+    renderer.setPixelRatio(ratio);renderer.setSize(innerWidth,innerHeight);
+    renderer.shadowMap.enabled=profile.settings.shadows&&!(touchActive&&mode!=='high');
+    const shadowSize=touchActive?1024:1536;if(sun.shadow.mapSize.x!==shadowSize){sun.shadow.mapSize.set(shadowSize,shadowSize);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}}
+    if(garageRenderer)garageRenderer.shadowMap.enabled=profile.settings.shadows&&!touchActive;
+    if(touchActive)for(const root of Object.values(mapRoots))packEnvironment(root);
+  }
+
+  const CFG = Object.freeze({missileCooldown: 8, lockTime: .65,
+    lockRange: 135, minAltitude: -10, maxAltitude: 35, boundary: 101});
+  const scene = new T.Scene();
+  scene.background = new T.Color(0xc2c5c3);
+  scene.fog = new T.Fog(0xc2c5c3, 120, 410);
+  const camera = new T.PerspectiveCamera(76, innerWidth / innerHeight, .15, 620);
+  let renderer;
+  try {
+    renderer = new T.WebGLRenderer({antialias:!touchActive,powerPreference:touchActive?'default':'high-performance'});
+    renderer.setPixelRatio(Math.min(devicePixelRatio||1,touchActive?1:1.6));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = T.PCFSoftShadowMap;
+    renderer.outputEncoding = T.sRGBEncoding;
+    renderer.toneMapping = T.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.02;
+    $('scene').appendChild(renderer.domElement);
+  } catch (error) { fail('Tarayıcı 3D görüntüyü başlatamadı. Dosyayı Chrome veya Edge ile açmayı dene.'); return; }
+  const canvas = renderer.domElement;
+  const clamp = T.MathUtils.clamp;
+  const damp = (a, b, rate, dt) => a + (b - a) * (1 - Math.exp(-rate * dt));
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const V = (x = 0, y = 0, z = 0) => new T.Vector3(x, y, z);
+  const FORWARD = V(0, 0, -1);
+  // A compact offline campaign. Save data is kept in this browser only.
+  const SAVE_KEY = 'drone-arena-campaign-v1';
+  const DRONES=[
+    {id:'pioneer',name:'ÖNCÜ',class:'D',role:'Çok amaçlı',price:0,level:1,hp:100,damage:1,speed:23,fast:37,boost:100,missile:12,reload:8,lock:.65,color:'#78817b',shape:'quad',span:1,bodyScale:[1,1,1]},
+    {id:'kestrel',name:'ATMACA',class:'C',role:'Hafif yarışçı',price:320,level:2,hp:85,damage:1,speed:29,fast:44,boost:115,missile:12,reload:8,lock:.60,color:'#d49b31',shape:'racer',span:1.1,bodyScale:[.84,.78,1.12]},
+    {id:'sentinel',name:'MUHAFIZ',class:'C',role:'Zırhlı savunma',price:500,level:3,hp:145,damage:1,speed:20,fast:33,boost:110,missile:14,reload:8.2,lock:.65,color:'#537668',shape:'guard',span:1.06,bodyScale:[1.18,1.22,1.05]},
+    {id:'striker',name:'AKIN',class:'B',role:'Taarruz',price:800,level:3,hp:115,damage:2,speed:24,fast:39,boost:110,missile:16,reload:7.8,lock:.60,color:'#993e35',shape:'attack',span:1.16,bodyScale:[1.03,.94,1.24]},
+    {id:'phantom',name:'HAYALET',class:'A',role:'Yüksek hız',price:1250,level:4,hp:100,damage:2,speed:32,fast:49,boost:125,missile:14,reload:7.2,lock:.52,color:'#697199',shape:'wing',span:1.16,bodyScale:[1.15,.72,1.16]},
+    {id:'titan',name:'TİTAN',class:'S',role:'Ağır altı motor',price:2100,level:5,hp:190,damage:3,speed:19,fast:31,boost:125,missile:20,reload:9,lock:.70,color:'#b3b6ae',shape:'hex',span:1.06,bodyScale:[1.22,1.14,1.12]}
+  ];
+  const MAPS=[
+    {id:'base',name:'Eğitim Üssü',tag:'GÜNDÜZ · BETON SAHA',description:'Hangarlar, açık pist ve geniş görüş alanı.',sky:0xc2c5c3,fog:0xc2c5c3,near:120,far:410,hemi:0xdce3e7,ground:0x544a3c,ambient:.85,sun:0xffe5bf,light:2},
+    {id:'city',name:'Şehir Meydanı',tag:'ŞEHİR · GÖKDELENLER',description:'Yüksek binalarla çevrili bir meydan ve şehir yolları.',sky:0xa9c4d3,fog:0xb6c8ce,near:135,far:430,hemi:0xe1efff,ground:0x505661,ambient:1,sun:0xffe6ca,light:1.8},
+    {id:'ridge',name:'Dağ Karakolu',tag:'DOĞA · KAYALIK VADİ',description:'Kayalık sırtlar, çam ağaçları ve dağların arasındaki uçuş sahası.',sky:0xaec7d0,fog:0xb7ccce,near:110,far:440,hemi:0xdbf2ff,ground:0x55533d,ambient:.95,sun:0xfff0d3,light:1.9},
+    {id:'chase',name:'Kaçış Vadisi',tag:'KOVALAMACA · BÜYÜK HARİTA',description:'Sanayi bölgesi, orman yolları ve üç korunaklı tamir alanı.',chaseOnly:true,sky:0xb7c8c1,fog:0xa8b8ac,near:380,far:1500,hemi:0xdceae1,ground:0x52614b,ambient:1,sun:0xffe7ba,light:1.8},
+    {id:'night',name:'Gece Üssü',tag:'GECE · IŞIKLI PİST',description:'Ay ışığı, pist lambaları ve projektörlerle aydınlatılmış üs.',sky:0x101e34,fog:0x20334b,near:100,far:365,hemi:0x8daed7,ground:0x253447,ambient:1.05,sun:0xb8d7ff,light:.85}
+  ];
+  const mapById=id=>MAPS.find(m=>m.id===id)||MAPS[0];
+  const DIFFICULTIES={easy:{name:'Kolay',count:-1,spread:.095,interval:1.45,damage:.68,pursuit:.80,time:400},normal:{name:'Normal',count:0,spread:.045,interval:1,damage:1,pursuit:1,time:320},hard:{name:'Zor',count:2,spread:.016,interval:.76,damage:1.22,pursuit:1.12,time:260}};
+  const CHASE_MISSION={id:13,name:'Büyük Kaçış',kind:'chase',goal:4,maxEnemies:5,spawnInterval:7,reward:320,xp:280,boss:false,duration:320};
+  const CHASE_POINTS=[[-360,12,250],[-330,20,-330],[320,16,-300],[360,14,260]].map(p=>V(...p));
+  const EXTRACTION=V(0,12,450),PAD_POINTS=[V(-245,-7.88,40),V(40,-7.88,-360),V(290,-7.88,100)];
+  let sessionDifficulty='normal',recordDifficulty='normal',motorHP=[100,100,100,100],collisionCooldown=0;
+  let activeColliders=[],chaseCheckpoint=0,chaseBeacons=[],chaseTimeLimit=320;
+  let landingAssist=-1,repairTimer=0,padCooldowns=[0,0,0],repairCount=0,collisionCount=0;
+  let backupMessage='',pendingBackup=null,backupUndo=null;
+  const isChase=()=>mission?.kind==='chase';
+  const difficulty=()=>DIFFICULTIES[sessionDifficulty];
+  const flightBoundary=()=>missionMap==='chase'?560:CFG.boundary;
+  const flightCeiling=()=>missionMap==='chase'?78:CFG.maxAltitude;
+  const motorPower=()=>.62+.28*motorHP.reduce((a,b)=>a+b,0)/(motorHP.length*100)+.1*Math.min(...motorHP)/100;
+  const threatLevel=()=>Math.min(5,1+chaseCheckpoint+Math.floor(missionTime/75));
+  const enemyLimit=()=>endlessActive?endlessConcurrentLimit():Math.max(2,Math.min(9,(isChase()?2+threatLevel():mission?.maxEnemies||4)+difficulty().count));
+  const recordKey=(map,id,level=sessionDifficulty)=>`${map}:${id}${level==='normal'?'':':'+level}`;
+  const recordMissions=id=>id==='chase'?[CHASE_MISSION]:MISSIONS;
+  function toggleCamera(){profile.settings.camera=profile.settings.camera==='fpv'?'follow':'fpv';saveProfile();updateCamera(1);notify(profile.settings.camera==='fpv'?'FPV · drone kamerası':'Dış takip kamerası');}
+  function damageMotor(amount,source){
+    let index=collisionCount%motorHP.length;
+    if(source){const d=source.clone().sub(player.position);index=Math.floor((((Math.atan2(d.x,d.z)-yaw)%(Math.PI*2)+Math.PI*2)%(Math.PI*2))/(Math.PI*2)*motorHP.length);}
+    motorHP[index]=Math.max(0,motorHP[index]-amount*2.8);
+  }
+  // Swept point against a box expanded by the drone's collision radius.
+  function segmentBox(a,b,box,radius=0){
+    let enter=0,leave=1,normal=V();const delta=b.clone().sub(a);let startsInside=true;
+    for(const k of ['x','y','z'])if(a[k]<box.min[k]-radius||a[k]>box.max[k]+radius)startsInside=false;
+    if(startsInside)return {t:0,normal,inside:true};
+    for(const k of ['x','y','z']){
+      const lo=box.min[k]-radius,hi=box.max[k]+radius,d=delta[k];
+      if(Math.abs(d)<1e-9){if(a[k]<lo||a[k]>hi)return null;continue;}
+      let near=(lo-a[k])/d,far=(hi-a[k])/d,sign=-1;if(near>far){[near,far]=[far,near];sign=1;}
+      if(near>enter){enter=near;normal.set(0,0,0);normal[k]=sign;}
+      leave=Math.min(leave,far);if(enter>leave)return null;
+    }
+    return enter>=0&&enter<=1&&leave>=0?{t:enter,normal,inside:false}:null;
+  }
+  function firstObstacle(a,b,radius=0){
+    let best=null;
+    for(const box of activeColliders){const hit=segmentBox(a,b,box,radius);if(hit&&(!best||hit.t<best.t))best={...hit,box};}
+    return best;
+  }
+  const lineBlocked=(a,b)=>!!firstObstacle(a,b,.25);
+  function pushOutOfBox(position,box,radius){
+    const options=[];for(const k of ['x','y','z'])for(const side of [-1,1]){const edge=(side<0?box.min[k]-radius:box.max[k]+radius);options.push({distance:Math.abs(position[k]-edge),k,edge,side});}
+    options.sort((a,b)=>a.distance-b.distance);const nearest=options[0];position[nearest.k]=nearest.edge+nearest.side*.03;const normal=V();normal[nearest.k]=nearest.side;return normal;
+  }
+  function resolvePlayerCollision(previous,dt){
+    collisionCooldown=Math.max(0,collisionCooldown-dt);const radius=1.25;
+    const hit=firstObstacle(previous,player.position,radius);let impact=0,source=null;
+    if(hit){
+      let normal=hit.normal;
+      if(hit.inside){normal=pushOutOfBox(player.position,hit.box,radius);}
+      else{const travel=player.position.clone().sub(previous),remaining=travel.clone().multiplyScalar(1-hit.t);player.position.copy(previous).addScaledVector(travel,Math.max(0,hit.t-.003));remaining.addScaledVector(normal,-Math.min(0,remaining.dot(normal)));const slide=player.position.clone().add(remaining);if(!firstObstacle(player.position,slide,radius))player.position.copy(slide);}
+      impact=Math.abs(velocity.dot(normal));velocity.addScaledVector(normal,-Math.min(0,velocity.dot(normal))*1.05);source=player.position.clone().addScaledVector(normal,-3);
+      if(normal.y>0)altitudeTarget=Math.max(altitudeTarget,player.position.y);
+    }
+    const floor=-6.65;
+    if(player.position.y<floor){impact=Math.max(impact,Math.max(0,-velocity.y));source=player.position.clone().add(V(0,-2,0));player.position.y=floor;velocity.y=Math.max(0,velocity.y);altitudeTarget=Math.max(altitudeTarget,floor);}
+    if(impact>3.5&&collisionCooldown<=0){collisionCooldown=.85;collisionCount++;damagePlayer(clamp((impact-3)*1.15,3,36),source);notify('Çarpışma · gövde ve motor hasarı');}
+  }
+  function avoidEnemyObstacle(e,previous){
+    const hit=firstObstacle(previous,e.mesh.position,1.6);if(!hit)return;
+    if(hit.inside)pushOutOfBox(e.mesh.position,hit.box,1.6);else e.mesh.position.copy(previous).lerp(e.mesh.position,Math.max(0,hit.t-.02));
+    e.velocity.y=Math.max(5,e.velocity.y);e.mesh.position.y=Math.min(flightCeiling()-4,e.mesh.position.y+2);
+  }
+  function nearestPad(){let index=0,distance=Infinity;PAD_POINTS.forEach((p,i)=>{const d=Math.hypot(player.position.x-p.x,player.position.z-p.z);if(d<distance){distance=d;index=i}});return {index,distance,pad:PAD_POINTS[index]};}
+  function padThreatened(index){const point=PAD_POINTS[index].clone().setY(-4);return foes.some(e=>!e.dead&&e.mesh.position.distanceTo(point)<90&&!lineBlocked(e.mesh.position,point));}
+  function toggleLanding(){
+    if(!running||!isChase())return false;
+    if(landingAssist>=0){landingAssist=-1;repairTimer=0;altitudeTarget=Math.max(altitudeTarget,5);notify('İniş iptal · yükseliş');return false;}
+    const near=nearestPad();if(near.distance>32){notify(`En yakın tamir alanı ${Math.round(near.distance)} m uzakta`);return false;}
+    if(combatLog.currentSpeed>10){notify('İniş için yavaşla ve ileri tuşunu bırak.');return false;}
+    landingAssist=near.index;repairTimer=0;clearInputs();notify('İniş yardımı açık · hareket tuşuyla iptal edebilirsin.');return true;
+  }
+  function updateService(dt){
+    for(let i=0;i<3;i++)padCooldowns[i]=Math.max(0,padCooldowns[i]-dt);
+    if(!isChase()||landingAssist<0)return;
+    const pad=PAD_POINTS[landingAssist],distance=Math.hypot(player.position.x-pad.x,player.position.z-pad.z);
+    const grounded=distance<3.5&&player.position.y< -6.2&&Math.abs(velocity.y)<1.8;
+    if(!grounded||padCooldowns[landingAssist]>0||padThreatened(landingAssist)||primaryHeld){repairTimer=0;return;}
+    repairTimer+=dt;
+    if(repairTimer>=4){
