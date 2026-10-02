@@ -1,10 +1,8 @@
-const CACHE_NAME = 'drone-war-offline-v2';
-const CORE = [
+var CACHE_NAME='drone-war-offline-v3-ios15';
+var CORE=[
   '/',
-  '/index.html',
   '/manifest.webmanifest',
   '/icon.svg',
-  '/vercel.json',
   '/game.part1.txt',
   '/game.part2.txt',
   '/game.part3.txt',
@@ -14,53 +12,63 @@ const CORE = [
   '/game.part7.txt'
 ];
 
-self.addEventListener('install', event => {
-  event.waitUntil((async () => {
-    const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(CORE);
-    await self.skipWaiting();
-  })());
+self.addEventListener('install',function(event){
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(function(cache){
+      return cache.addAll(CORE);
+    }).then(function(){
+      return self.skipWaiting();
+    })
+  );
 });
 
-self.addEventListener('activate', event => {
-  event.waitUntil((async () => {
-    const keys = await caches.keys();
-    await Promise.all(keys.filter(k => k.startsWith('drone-war-offline-') && k !== CACHE_NAME).map(k => caches.delete(k)));
-    await self.clients.claim();
-  })());
+self.addEventListener('activate',function(event){
+  event.waitUntil(
+    caches.keys().then(function(keys){
+      return Promise.all(keys.map(function(key){
+        if(key.indexOf('drone-war-offline-')===0 && key!==CACHE_NAME)return caches.delete(key);
+      }));
+    }).then(function(){
+      return self.clients.claim();
+    })
+  );
 });
 
-self.addEventListener('fetch', event => {
-  if (event.request.method !== 'GET') return;
-  const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin) return;
+self.addEventListener('fetch',function(event){
+  if(event.request.method!=='GET')return;
+  var url=new URL(event.request.url);
+  if(url.origin!==self.location.origin)return;
 
-  if (event.request.mode === 'navigate') {
-    event.respondWith((async () => {
-      try {
-        const fresh = await fetch(event.request);
-        const cache = await caches.open(CACHE_NAME);
-        cache.put('/index.html', fresh.clone());
-        return fresh;
-      } catch (_) {
-        return (await caches.match('/index.html')) || (await caches.match('/'));
-      }
-    })());
+  if(event.request.mode==='navigate'){
+    event.respondWith(
+      fetch(event.request).then(function(response){
+        if(response && response.ok){
+          var copy=response.clone();
+          caches.open(CACHE_NAME).then(function(cache){cache.put('/',copy);});
+        }
+        return response;
+      }).catch(function(){
+        return caches.match('/').then(function(cached){
+          return cached || new Response(
+            '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="background:#06111d;color:white;font-family:system-ui;text-align:center;padding:40px"><h2>Drone War</h2><p>Offline dosyası bulunamadı. İnterneti açıp oyunu bir kez tamamen yükle.</p></body>',
+            {headers:{'Content-Type':'text/html; charset=utf-8'}}
+          );
+        });
+      })
+    );
     return;
   }
 
-  event.respondWith((async () => {
-    const cached = await caches.match(event.request);
-    if (cached) return cached;
-    try {
-      const fresh = await fetch(event.request);
-      if (fresh && fresh.ok) {
-        const cache = await caches.open(CACHE_NAME);
-        cache.put(event.request, fresh.clone());
-      }
-      return fresh;
-    } catch (_) {
-      return cached || Response.error();
-    }
-  })());
+  event.respondWith(
+    caches.match(event.request).then(function(cached){
+      if(cached)return cached;
+      return fetch(event.request).then(function(response){
+        if(response && response.ok){
+          var copy=response.clone();
+          caches.open(CACHE_NAME).then(function(cache){cache.put(event.request,copy);});
+        }
+        return response;
+      });
+    })
+  );
 });
