@@ -1,0 +1,200 @@
+        <div class="stat-item"><b>${win?missionResult?.credits:0}</b><small>KREDİ ÖDÜLÜ</small></div>
+        <div class="stat-item"><b>${win?missionResult?.xp:0}</b><small>XP ÖDÜLÜ</small></div></div>
+        ${reportHTML()}
+        ${win?`<p>Başarı: ${'★'.repeat(missionResult?.stars||1)}${'☆'.repeat(3-(missionResult?.stars||1))}${missionResult?.rankUp?' · Yeni pilot seviyesi!':''}</p>`:''}
+        <div class="menu-actions">${win&&!isChase()&&selectedMission<profile.unlockedMission?actionButton('next','SONRAKİ GÖREV','primary'):''}${actionButton('retry','TEKRAR DENE',win?'':'primary')}${actionButton('hangar','HANGAR')}${actionButton('home','ANA MENÜ')}</div>`;
+    }
+    ui.panel.innerHTML = html;document.body.classList.toggle('garage-open',['fleet','customize'].includes(activeView));
+    if(['fleet','customize'].includes(activeView))mountGaragePreview();
+  }
+  function showPanel(view) {
+    if(view==='settings' && activeView!=='settings'){settingsReturn=activeView==='pause'?'pause':'home';settingsMessage='';}
+    if(view!=='settings')rebinding=null;
+    activeView = view;document.body.classList.remove('fpv-flight');if(player)player.visible=true;
+    ui.overlay.classList.remove('hidden'); document.body.classList.add('menu-open');
+    if (document.pointerLockElement === canvas) { try { document.exitPointerLock(); } catch (_) {} }
+    renderPanel();
+  }
+  function hidePanel() { ui.overlay.classList.add('hidden'); document.body.classList.remove('menu-open','garage-open'); }
+  function buyUpgrade(id) {
+    const up=UPGRADES.find(x=>x.id===id); if (!up) return;
+    const rank=profile.upgrades[id], cost=upgradePrice(up);
+    if(rank>=UP_MAX || profile.credits<cost || pilotLevel()<rank+1) return;
+    profile.credits-=cost; profile.upgrades[id]++;upgradeMessage=`${up.name} seviye ${profile.upgrades[id]} oldu. Yeni değerler bir sonraki uçuşta uygulanır.`;saveProfile();renderPanel();
+  }
+  function applyQuality(){setTouchQuality();}
+  let audioContext=null,audioMaster=null,ambient=null,noiseBuffer=null;
+  function initAudio(){
+    if(!profile.settings.sound)return;
+    try{
+      const A=window.AudioContext||window.webkitAudioContext;if(!A)return;
+      if(!audioContext){
+        audioContext=new A();audioMaster=audioContext.createGain();audioMaster.connect(audioContext.destination);
+        noiseBuffer=audioContext.createBuffer(1,audioContext.sampleRate*2,audioContext.sampleRate);
+        const data=noiseBuffer.getChannelData(0);let previous=0;
+        for(let i=0;i<data.length;i++){previous=(previous+(Math.random()*2-1)*.06)/1.02;data[i]=previous*3.5;}
+        const rotor=audioContext.createOscillator(),rotor2=audioContext.createOscillator(),motorGain=audioContext.createGain();
+        rotor.type='sawtooth';rotor2.type='triangle';motorGain.gain.value=0;
+        const filter=audioContext.createBiquadFilter();filter.type='lowpass';filter.frequency.value=420;
+        rotor.connect(filter);rotor2.connect(filter);filter.connect(motorGain).connect(audioMaster);rotor.start();rotor2.start();
+        const wind=audioContext.createBufferSource(),windGain=audioContext.createGain(),windFilter=audioContext.createBiquadFilter();
+        wind.buffer=noiseBuffer;wind.loop=true;windFilter.type='highpass';windFilter.frequency.value=480;windGain.gain.value=0;
+        wind.connect(windFilter).connect(windGain).connect(audioMaster);wind.start();ambient={rotor,rotor2,motorGain,windGain};
+      }
+      if(audioContext.state==='suspended')audioContext.resume().catch(()=>{});
+    }catch(_){}
+  }
+  function sound(freq=420,duration=.07,volume=.028){
+    if(!profile.settings.sound||!audioContext)return;
+    try{
+      const now=audioContext.currentTime,o=audioContext.createOscillator(),g=audioContext.createGain();
+      o.type='triangle';o.frequency.setValueAtTime(freq,now);o.frequency.exponentialRampToValueAtTime(Math.max(60,freq*.55),now+duration);
+      g.gain.setValueAtTime(volume,now);g.gain.exponentialRampToValueAtTime(.0001,now+duration);
+      o.connect(g).connect(audioMaster);o.onended=()=>{o.disconnect();g.disconnect();};o.start();o.stop(now+duration);
+    }catch(_){}
+  }
+  function noiseSound(kind='shot',strength=1){
+    if(!profile.settings.sound||!audioContext||!noiseBuffer)return;
+    try{
+      const table={shot:[.10,1600,.13],metal:[.18,2700,.10],blast:[.75,240,.38],flyby:[.16,1600,.07],missile:[.4,650,.15],reload:[.16,1600,.08]};
+      const [duration,freq,volume]=table[kind]||table.shot,now=audioContext.currentTime;
+      const source=audioContext.createBufferSource(),filter=audioContext.createBiquadFilter(),gain=audioContext.createGain();source.buffer=noiseBuffer;
+      filter.type=kind==='metal'||kind==='flyby'?'bandpass':'lowpass';filter.frequency.value=freq;filter.Q.value=kind==='metal'?4:.8;
+      gain.gain.setValueAtTime(Math.max(.0001,volume*strength),now);gain.gain.exponentialRampToValueAtTime(.0001,now+duration);
+      source.connect(filter).connect(gain).connect(audioMaster);source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};
+      source.start(0,Math.random()*.7,duration);
+    }catch(_){}
+  }
+  function updateAudio(){
+    if(!ambient||!audioContext)return;
+    const now=audioContext.currentTime,enabled=running&&profile.settings.sound, speed=velocity.length();
+    audioMaster.gain.setTargetAtTime(profile.settings.sound?profile.settings.volume:0,now,.06);
+    ambient.motorGain.gain.setTargetAtTime(enabled?.018+speed*.0003:0,now,.12);
+    ambient.windGain.gain.setTargetAtTime(enabled?.013+speed*.0011:0,now,.15);
+    ambient.rotor.frequency.setTargetAtTime(80+speed*1.9+Math.abs(velocity.y)*.8,now,.08);
+    ambient.rotor2.frequency.setTargetAtTime(164+speed*3.9,now,.08);
+  }
+  ui.overlay.addEventListener('click',e=>{
+    const button=e.target.closest('button[data-action]');if(!button||button.disabled)return;
+    const a=button.dataset.action;if(flightFeatureAction(a)||expansionAction(a)||fleetAction(a))return;
+    if(a==='touch-layout')openTouchEditor();
+    else if(a==='touch-layout-reset'){profile.settings.touchLayout=defaultTouchCustomization();applyTouchCustomization();saveProfile();settingsMessage='Telefon kumandaları varsayılan düzene döndü.';renderPanel();}
+    else if(a==='play')startMission(selectedMission);
+    else if(a==='training')startMission(1,true);
+    else if(a==='retry'){if(practiceActive)startPractice();else if(endlessActive)startEndless();else if(isChase())startChase();else startMission(selectedMission);}
+    else if(a==='resume')resumeMission();
+    else if(a==='leave'){if(practiceActive)finishPractice();else if(endlessActive)finishEndless();else{mission=null;reset();showPanel('home');}}
+    else if(a==='next'){selectedMission=Math.min(profile.unlockedMission,selectedMission+1);startMission(selectedMission);}
+    else if(a==='select'){const id=Number(button.dataset.mission);if(id<=profile.unlockedMission){selectedMission=id;renderPanel();}}
+    else if(a.startsWith('buy-'))buyUpgrade(a.slice(4));
+    else if(a==='sound'){profile.settings.sound=!profile.settings.sound;initAudio();saveProfile();renderPanel();}
+    else if(a==='quality'){const q=profile.settings.quality={auto:'low',low:'high',high:'auto'}[profile.settings.quality];profile.settings.shadows=q!=='low';profile.settings.resolution=q==='low'?.7:q==='high'?1.2:1;profile.settings.effects=q==='low'?'low':q==='high'?'high':'medium';applyQuality();saveProfile();renderPanel();}
+    else if(a==='shadows'){if(touchActive&&profile.settings.quality!=='high'){profile.settings.quality='high';profile.settings.shadows=true;}else profile.settings.shadows=!profile.settings.shadows;applyQuality();saveProfile();renderPanel();}
+    else if(a==='shake'){profile.settings.cameraShake=!profile.settings.cameraShake;cameraImpulse=0;saveProfile();renderPanel();}
+    else if(a==='invert'){profile.settings.invertY=!profile.settings.invertY;saveProfile();renderPanel();}
+    else if(a==='settings-back'){showPanel(settingsReturn);}
+    else if(a==='fullscreen'){toggleFullscreen();}
+    else if(a.startsWith('bind-')){rebinding=a.slice(5);renderPanel();}
+    else if(a==='reset-keys'){profile.settings.bindings={...DEFAULT_KEYS};rebinding=null;saveProfile();renderPanel();}
+    else showPanel(a);
+  });
+
+  ui.overlay.addEventListener('change',e=>{
+    if(changeTouchCustomization(e))return;
+    const id=e.target.id,value=e.target.value;
+    if(id==='backupFile'){readBackup(e.target.files?.[0]);return;}
+    if(id==='recordDifficulty'){if(DIFFICULTIES[value])recordDifficulty=value;renderPanel();return;}
+    if(id==='practiceDrone'){if(DRONES.some(d=>d.id===value))practiceConfig.droneId=value;renderPanel();return;}
+    if(id==='practiceMap'){if(MAPS.some(m=>m.id===value&&!m.chaseOnly))practiceConfig.map=value;renderPanel();return;}
+    if(id==='practiceParts'){practiceConfig.upgraded=value==='current';renderPanel();return;}
+    if(id==='practiceTargets'){practiceConfig.moving=value==='moving';renderPanel();return;}
+    if(id==='recordMap'){if(MAPS.some(m=>m.id===value))recordMap=value;renderPanel();return;}
+    if(e.target.id==='customPaint'){if(/^#[0-9a-f]{6}$/i.test(e.target.value))changePaint('color',e.target.value.toLowerCase());return;}
+    if(e.target.id==='fleetSort'){fleetSort=['default','price','power'].includes(e.target.value)?e.target.value:'default';renderPanel();return;}
+    const name=e.target.dataset.setting;if(!name)return;
+    if(name==='touchControls'){profile.settings.touchControls=['auto','on','off'].includes(value)?value:'auto';updateTouchLayout();}
+    else if(name==='touchSensitivity'){const v=Number(value);if(!Number.isFinite(v))return;profile.settings.touchSensitivity=clamp(v,.5,1.8);}
+    else if(name==='difficulty')profile.settings.difficulty=Object.hasOwn(DIFFICULTIES,value)?value:'normal';
+    else if(name==='effects')profile.settings.effects=['low','medium','high'].includes(e.target.value)?e.target.value:'medium';
+    else if(['resolution','volume','sensitivity'].includes(name)){const v=Number(e.target.value);if(!Number.isFinite(v))return;const bounds={resolution:[.6,1.5],volume:[0,1],sensitivity:[.4,2]}[name];profile.settings[name]=clamp(v,...bounds);}
+    else return;
+    applyQuality();saveProfile();renderPanel();
+  });
+  async function toggleFullscreen(){
+    try{if(document.fullscreenElement)await document.exitFullscreen();else if(document.documentElement.requestFullscreen){await document.documentElement.requestFullscreen();if(touchActive&&window.screen?.orientation?.lock)try{await window.screen.orientation.lock('landscape')}catch(_){}}else throw new Error();settingsMessage='';}
+    catch(_){settingsMessage='Bu tarayıcı tam ekranı açamadı. Pencereyi büyüterek oynayabilirsin.';}
+    if(['settings','home'].includes(activeView))renderPanel();else if(settingsMessage)notify(settingsMessage);
+  }
+  const pressed=action=>!!keys[profile.settings.bindings[action]]||(action==='boost'&&touchBoost);
+  const steel = (color, roughness = .68, metalness = .18) => new T.MeshStandardMaterial({color, roughness, metalness});
+  function mesh(parent, geometry, material, x = 0, y = 0, z = 0) {
+    const m = new T.Mesh(geometry, material);
+    m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; parent.add(m); return m;
+  }
+  function box(parent, material, sx, sy, sz, x = 0, y = 0, z = 0) {
+    return mesh(parent, new T.BoxGeometry(sx, sy, sz), material, x, y, z);
+  }
+  function strut(parent, from, to, radius, material) {
+    const m = mesh(parent, new T.CylinderGeometry(radius, radius, from.distanceTo(to), 8), material);
+    m.position.copy(from).add(to).multiplyScalar(.5);
+    m.quaternion.setFromUnitVectors(V(0, 1, 0), to.clone().sub(from).normalize()); return m;
+  }
+  const hemisphere=new T.HemisphereLight(0xdce3e7,0x544a3c,.85);scene.add(hemisphere);
+  const sun = new T.DirectionalLight(0xffe5bf, 2.0);
+  sun.position.set(-65, 115, 50); sun.castShadow = true;
+  sun.shadow.mapSize.set(1536, 1536);
+  Object.assign(sun.shadow.camera, {left: -120, right: 120, top: 120, bottom: -120, near: 1, far: 270});
+  sun.shadow.bias = -.00025; sun.shadow.normalBias = .03; scene.add(sun);
+  const airfield=new T.Group();airfield.name='Eğitim Üssü';scene.add(airfield);
+  const ground = mesh(airfield, new T.PlaneGeometry(1400, 1400), steel(0x817461, 1), 0, -8.14, 0);
+  ground.rotation.x = -Math.PI / 2; ground.castShadow = false;
+  const apron = box(airfield, steel(0x777771, .98, 0), 224, .14, 224, 0, -8.04, 0);
+  apron.castShadow = false;
+  const paint = steel(0xbcb6a2, .9, 0), seam = steel(0x484f50, 1, 0);
+  for (let x = -105; x <= 105; x += 15) box(airfield, seam, .065, .008, 215, x, -7.959, 0);
+  for (let z = -105; z <= 105; z += 15) box(airfield, seam, 215, .008, .065, 0, -7.958, z);
+  for (let z = -97; z < 104; z += 16) box(airfield, paint, .65, .015, 7, -30, -7.948, z);
+  for (const x of [-105, 105]) box(airfield, paint, .3, .02, 210, x, -7.94, 0);
+  for (const z of [-105, 105]) box(airfield, paint, 210, .02, .3, 0, -7.94, z);
+  const pad = mesh(airfield, new T.RingGeometry(8.5, 8.85, 64), paint, 0, -7.93, 8);
+  pad.rotation.x = -Math.PI / 2;
+  for (const x of [-2.7, 2.7]) box(airfield, paint, .6, .02, 7, x, -7.92, 8);
+  box(airfield, paint, 5.4, .02, .6, 0, -7.92, 8);
+  // Hangars stand outside the flight area; a clear apron leaves room to manoeuvre.
+  const hangarWall = steel(0x909891, .83), roof = steel(0x586461, .76), doors = steel(0x424e52);
+  for (const x of [-80, -24, 36, 89]) {
+    box(airfield, hangarWall, 35, 16, 29, x, 0, -142);
+    box(airfield, roof, 37, 1, 31, x, 8.5, -142);
+    box(airfield, doors, 24, 12, .2, x, -1.3, -127.3);
+    for (let y = -6; y < 5; y += 1.2) box(airfield, roof, 24, .08, .25, x, y, -127.14);
+  }
+  const crateMat = steel(0x737964), hazardMat = steel(0xc6a858);
+  for (let i = 0; i < 12; i++) {
+    const x = i % 2 ? -120 : 120, z = -90 + Math.floor(i / 2) * 33;
+    box(airfield, crateMat, 9, 5, 5, x, -5.5, z);
+    box(airfield, hazardMat, .4, 5.1, 5.1, x + 3, -5.5, z);
+  }
+  const hillMat = steel(0x8b8474, 1, 0);
+  // Weathered concrete with subtle variations rather than a perfectly uniform slab.
+  const tiles=new T.InstancedMesh(new T.BoxGeometry(14.88,.009,14.88),steel(0xffffff,1,0),196);
+  let tileIndex=0;
+  for(let x=-97.5;x<105;x+=15)for(let z=-97.5;z<105;z+=15){
+    const shade=.42+Math.random()*.06;
+    tiles.setMatrixAt(tileIndex,new T.Matrix4().makeTranslation(x,-7.95,z));
+    tiles.setColorAt(tileIndex,new T.Color(shade,shade*.99,shade*.94));tileIndex++;
+  }
+  tiles.receiveShadow=true;tiles.castShadow=false;airfield.add(tiles);
+  // Rounded, irregular ridgelines form a natural horizon.
+  for (let i = 0; i < 24; i++) {
+    const a=i/24*Math.PI*2, geo=new T.SphereGeometry(1,16,9);
+    const pos=geo.attributes.position;
+    for(let j=0;j<pos.count;j++){
+      const x=pos.getX(j),y=pos.getY(j),z=pos.getZ(j);
+      const rough=1+.11*Math.sin(x*11+z*8)*Math.cos(y*7);
+      pos.setXYZ(j,x*rough,y*rough,z*rough);
+    }
+    geo.computeVertexNormals();
+    const hill=mesh(airfield,geo,hillMat,Math.sin(a)*330,-13,Math.cos(a)*330);
+    hill.scale.set(rand(52,88),rand(32,72),rand(55,95));hill.castShadow=false;
+  }
+  const concrete=steel(0x9b998d,1), darkMetal=steel(0x424849,.7,.5);
