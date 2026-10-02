@@ -63,12 +63,13 @@
   function setTouchQuality(){
     if(!renderer)return;
     const mode=profile.settings.quality,pixels=Math.max(1,innerWidth*innerHeight);
-    const cap=touchActive?(mode==='high'?1.5:mode==='low'?.9:1.1):2;
-    const budget=touchActive?(mode==='high'?1800000:mode==='low'?750000:1150000):Infinity;
+    const oldIPhone=/iP(hone|od)/.test(navigator.userAgent)&&Math.max(screen.width||0,screen.height||0)<=736;
+    const cap=touchActive?(oldIPhone?(mode==='high'?1.05:.82):(mode==='high'?1.5:mode==='low'?.9:1.1)):2;
+    const budget=touchActive?(oldIPhone?(mode==='high'?900000:620000):(mode==='high'?1800000:mode==='low'?750000:1150000)):Infinity;
     const ratio=Math.min(cap,(devicePixelRatio||1)*profile.settings.resolution,Math.sqrt(budget/pixels));
     renderer.setPixelRatio(ratio);renderer.setSize(innerWidth,innerHeight);
-    renderer.shadowMap.enabled=profile.settings.shadows&&!(touchActive&&mode!=='high');
-    const shadowSize=touchActive?1024:1536;if(sun.shadow.mapSize.x!==shadowSize){sun.shadow.mapSize.set(shadowSize,shadowSize);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}}
+    renderer.shadowMap.enabled=profile.settings.shadows&&!oldIPhone&&!(touchActive&&mode!=='high');
+    const shadowSize=touchActive?(oldIPhone?512:1024):1536;if(sun.shadow.mapSize.x!==shadowSize){sun.shadow.mapSize.set(shadowSize,shadowSize);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}}
     if(garageRenderer)garageRenderer.shadowMap.enabled=profile.settings.shadows&&!touchActive;
     if(touchActive)for(const root of Object.values(mapRoots))packEnvironment(root);
   }
@@ -82,7 +83,7 @@
   let renderer;
   try {
     renderer = new T.WebGLRenderer({antialias:!touchActive,powerPreference:touchActive?'default':'high-performance'});
-    renderer.setPixelRatio(Math.min(devicePixelRatio||1,touchActive?1:1.6));
+    renderer.setPixelRatio(Math.min(devicePixelRatio||1,touchActive?(/iP(hone|od)/.test(navigator.userAgent)&&Math.max(screen.width||0,screen.height||0)<=736?.82:1):1.6));
     renderer.setSize(innerWidth, innerHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = T.PCFSoftShadowMap;
@@ -90,7 +91,7 @@
     renderer.toneMapping = T.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.02;
     $('scene').appendChild(renderer.domElement);
-  } catch (error) { fail('Tarayıcı 3D görüntüyü başlatamadı. Dosyayı Chrome veya Edge ile açmayı dene.'); return; }
+  } catch (error) { fail('Tarayıcı 3D görüntüyü başlatamadı. iPhone’da Safari ile, diğer cihazlarda güncel bir tarayıcıyla açmayı dene.'); return; }
   const canvas = renderer.domElement;
   const clamp = T.MathUtils.clamp;
   const damp = (a, b, rate, dt) => a + (b - a) * (1 - Math.exp(-rate * dt));
