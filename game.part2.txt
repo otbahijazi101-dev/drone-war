@@ -64,8 +64,8 @@
     if(!renderer)return;
     const mode=profile.settings.quality,pixels=Math.max(1,innerWidth*innerHeight);
     const oldIPhone=/iP(hone|od)/.test(navigator.userAgent)&&Math.max(screen.width||0,screen.height||0)<=736;
-    const cap=touchActive?(oldIPhone?(mode==='high'?1.05:.82):(mode==='high'?1.5:mode==='low'?.9:1.1)):2;
-    const budget=touchActive?(oldIPhone?(mode==='high'?900000:620000):(mode==='high'?1800000:mode==='low'?750000:1150000)):Infinity;
+    const cap=touchActive?(oldIPhone?(mode==='high'?1.35:mode==='low'?.95:1.15):(mode==='high'?1.5:mode==='low'?.9:1.1)):2;
+    const budget=touchActive?(oldIPhone?(mode==='high'?1350000:mode==='low'?780000:1050000):(mode==='high'?1800000:mode==='low'?750000:1150000)):Infinity;
     const ratio=Math.min(cap,(devicePixelRatio||1)*profile.settings.resolution,Math.sqrt(budget/pixels));
     renderer.setPixelRatio(ratio);renderer.setSize(innerWidth,innerHeight);
     renderer.shadowMap.enabled=profile.settings.shadows&&!oldIPhone&&!(touchActive&&mode!=='high');
@@ -82,8 +82,9 @@
   const camera = new T.PerspectiveCamera(76, innerWidth / innerHeight, .15, 620);
   let renderer;
   try {
-    renderer = new T.WebGLRenderer({antialias:!touchActive,powerPreference:touchActive?'default':'high-performance'});
-    renderer.setPixelRatio(Math.min(devicePixelRatio||1,touchActive?(/iP(hone|od)/.test(navigator.userAgent)&&Math.max(screen.width||0,screen.height||0)<=736?.82:1):1.6));
+    const legacyIPhone=/iP(hone|od)/.test(navigator.userAgent)&&Math.max(screen.width||0,screen.height||0)<=736;
+    renderer = new T.WebGLRenderer({antialias:!touchActive||legacyIPhone,powerPreference:touchActive?'default':'high-performance'});
+    renderer.setPixelRatio(Math.min(devicePixelRatio||1,touchActive?(legacyIPhone?1.1:1):1.6));
     renderer.setSize(innerWidth, innerHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = T.PCFSoftShadowMap;
