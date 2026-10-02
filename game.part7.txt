@@ -1,0 +1,167 @@
+    c.fillStyle = '#c9f0df'; c.beginPath(); c.moveTo(48, 42); c.lineTo(44, 51); c.lineTo(52, 51); c.closePath(); c.fill();
+    const waypoint=isChase()?(CHASE_POINTS[chaseCheckpoint]||EXTRACTION):mission?.kind==='race'?raceGates[gateIndex]?.position:missionAsset?.mesh.position;
+    if(waypoint){
+      const dx=waypoint.x-player.position.x,dz=waypoint.z-player.position.z;
+      let x=(dx*Math.cos(yaw)-dz*Math.sin(yaw))*radarScale,y=(dx*Math.sin(yaw)+dz*Math.cos(yaw))*radarScale;
+      const distance=Math.hypot(x,y);if(distance>39){x*=39/distance;y*=39/distance;}
+      c.fillStyle='#ffe8a0';c.fillRect(cx+x-3,cy+y-3,6,6);
+    }
+    if(isChase())for(const p of [nearestPad().pad]){const dx=p.x-player.position.x,dz=p.z-player.position.z;let x=(dx*Math.cos(yaw)-dz*Math.sin(yaw))*radarScale,y=(dx*Math.sin(yaw)+dz*Math.cos(yaw))*radarScale;const distance=Math.hypot(x,y);if(distance>38){x*=38/distance;y*=38/distance;}c.strokeStyle='#76edb1';c.beginPath();c.arc(cx+x,cy+y,3.5,0,Math.PI*2);c.stroke();}
+    for (const e of foes) {
+      if (e.dead) continue; const dx = e.mesh.position.x - player.position.x, dz = e.mesh.position.z - player.position.z;
+      let rx = (dx * Math.cos(yaw) - dz * Math.sin(yaw)) * radarScale;
+      let ry = (dx * Math.sin(yaw) + dz * Math.cos(yaw)) * radarScale;
+      const distance = Math.hypot(rx, ry); if (distance > 40) { rx *= 40 / distance; ry *= 40 / distance; }
+      c.fillStyle = e === lockTarget ? '#ffe1a1' : '#ff9c7d'; c.beginPath(); c.arc(cx + rx, cy + ry, 3, 0, Math.PI * 2); c.fill();
+    }
+  }
+  function update(dt) {
+    if(!running)return;
+    clock+=dt;missionTime+=dt;noticeTime-=dt;if(noticeTime<=0)ui.notice.classList.remove('on');
+    const previousPlayer=player.position.clone();
+    updatePlayer(dt);updateCamera(dt);if(running){updateWeapon(dt);updateEnemies(dt);updateLock(dt);updateService(dt);}
+    missileCooldown=Math.max(0,missileCooldown-dt);
+    if(pendingMissile){pendingMissile=false;launchMissile();}
+    updateBullets(dt);if(running)updateMissiles(dt);if(running)updateEnemyMissiles(dt);
+    updateEffects(dt);if(running)updateObjectives(dt,previousPlayer);if(running)updateTutorial();
+    updateHUD();updateCombatHUD(dt);radarClock-=dt;if(radarClock<=0){radarClock=.09;drawRadar();}
+  }
+
+  $('cameraButton').addEventListener('click',toggleCamera);
+  $('serviceButton').addEventListener('click',toggleLanding);
+  $('practiceEnd').addEventListener('click',finishPractice);
+  $('practiceReset').addEventListener('click',renewPracticeTargets);
+  $('reloadButton').addEventListener('click',beginReload);
+  $('skipTutorial').addEventListener('click',finishTutorial);
+  $('pauseButton').addEventListener('click',pauseMission);
+  bindTouchEditor();updateTouchLayout();applyQuality();
+  ui.missile.addEventListener('pointerdown',e=>{
+    if(!running||ui.missile.disabled||(e.pointerType==='mouse'&&e.button!==0))return;
+    e.preventDefault();lastMissilePress=performance.now();pendingMissile=true;
+  });
+  ui.missile.addEventListener('click',()=>{if(running&&!ui.missile.disabled&&performance.now()-lastMissilePress>500)pendingMissile=true;});
+  window.addEventListener('keydown',e=>{
+    if(touchEditor){if(e.code==='Escape'){e.preventDefault();closeTouchEditor(false);}return;}
+    if(rebinding){
+      e.preventDefault();if(e.code==='Escape'){rebinding=null;renderPanel();return;}
+      if(!/^(Key[A-Z]|Digit[0-9]|Arrow(Up|Down|Left|Right)|Shift(Left|Right)|Space)$/.test(e.code))return;
+      const old=profile.settings.bindings[rebinding],other=Object.keys(DEFAULT_KEYS).find(k=>profile.settings.bindings[k]===e.code);
+      if(other)profile.settings.bindings[other]=old;profile.settings.bindings[rebinding]=e.code;rebinding=null;saveProfile();renderPanel();return;
+    }
+    const editable=['INPUT','SELECT','TEXTAREA'].includes(e.target?.tagName);if(editable)return;
+    if(running&&Object.values(profile.settings.bindings).includes(e.code))e.preventDefault();
+    if(e.code===profile.settings.bindings.camera&&!e.repeat&&running)toggleCamera();
+    if(e.code===profile.settings.bindings.land&&!e.repeat&&running)toggleLanding();
+    if(e.code===profile.settings.bindings.missile&&!e.repeat&&running)pendingMissile=true;
+    if(e.code===profile.settings.bindings.reload&&!e.repeat&&running)beginReload();
+    if((e.code===profile.settings.bindings.pause||e.code==='Escape')&&!e.repeat){
+      e.preventDefault();if(running)pauseMission();else if(activeView==='pause')resumeMission();else if(activeView==='settings')showPanel(settingsReturn);else if(activeView!=='home')showPanel('home');
+    }
+    keys[e.code]=true;
+  });
+  window.addEventListener('keyup', e => { keys[e.code] = false; });
+  window.addEventListener('blur',()=>{if(running)pauseMission();else clearInputs();});
+  document.addEventListener('visibilitychange', () => { if (document.hidden && running) pauseMission(); else if(document.hidden) clearInputs(); });
+  document.addEventListener('pointerlockchange',()=>{lastMouseX=lastMouseY=null;if(document.pointerLockElement!==canvas){primaryHeld=false;primaryPointer=null;}});
+  canvas.addEventListener('click', () => {
+    if (!running || touchActive || document.pointerLockElement === canvas) return;
+    try { const promise = canvas.requestPointerLock && canvas.requestPointerLock(); if (promise && promise.catch) promise.catch(() => {}); } catch (_) {}
+  });
+  window.addEventListener('mousemove', e => {
+    if (!running||touchActive) return;
+    const locked = document.pointerLockElement === canvas;
+    if (!locked && e.target !== canvas) { lastMouseX = lastMouseY = null; return; }
+    const dx = locked ? e.movementX : lastMouseX === null ? 0 : e.clientX - lastMouseX;
+    const dy = locked ? e.movementY : lastMouseY === null ? 0 : e.clientY - lastMouseY;
+    lastMouseX = e.clientX; lastMouseY = e.clientY;
+    targetYaw -= (Number.isFinite(dx) ? dx : 0) * .0023*profile.settings.sensitivity;
+    altitudeTarget = clamp(altitudeTarget - (Number.isFinite(dy) ? dy : 0) * .085*profile.settings.sensitivity*(profile.settings.invertY?-1:1), CFG.minAltitude, flightCeiling());
+  });
+  function capture(element,id){try{element.setPointerCapture(id)}catch(_){}}
+  function releaseInputPointer(id){
+    if(lookPointer===id){lookPointer=null;lastMouseX=lastMouseY=null;}
+    if(stickId===id){stickId=null;joy.x=joy.y=0;touchBoost=false;$('nub').style.transform='';$('stick').classList.remove('engaged','boosting');$('touchBoost').classList.remove('active');$('touchBoost').setAttribute('aria-pressed','false');}
+    if(fireTouchId===id){fireTouchId=null;$('fire').classList.remove('held');}
+    if(touchOwners.up===id){touchOwners.up=null;ascend=false;$('up').classList.remove('held');}
+    if(touchOwners.down===id){touchOwners.down=null;descend=false;$('down').classList.remove('held');}
+    stopPrimary(id);
+  }
+  canvas.addEventListener('pointerdown',e=>{
+    if(!running)return;
+    if(e.pointerType==='touch'||e.pointerType==='pen'){
+      if(lookPointer!==null)return;e.preventDefault();lookPointer=e.pointerId;lastTouchX=e.clientX;lastTouchY=e.clientY;capture(canvas,e.pointerId);
+    }else if(e.button===0)startPrimary(e.pointerId);
+  });
+  canvas.addEventListener('pointermove',e=>{
+    if(!running||lookPointer!==e.pointerId)return;applyTouchLook(e.clientX-lastTouchX,e.clientY-lastTouchY);lastTouchX=e.clientX;lastTouchY=e.clientY;
+  });
+  for(const type of ['pointerup','pointercancel'])window.addEventListener(type,e=>releaseInputPointer(e.pointerId));
+  for(const type of ['pointercancel','lostpointercapture'])canvas.addEventListener(type,e=>releaseInputPointer(e.pointerId));
+  const stick=$('stick');
+  function updateStick(e){
+    const rect=stick.getBoundingClientRect(),dx=e.clientX-rect.left-rect.width/2,dy=e.clientY-rect.top-rect.height/2;
+    const radius=Math.max(20,rect.width*.3),length=Math.hypot(dx,dy),amount=clamp((length/radius-.08)/.92,0,1),x=length?dx/length:0,y=length?dy/length:0;
+    joy.x=x*amount;joy.y=y*amount;$('nub').style.transform=`translate(${x*Math.min(radius,length)}px,${y*Math.min(radius,length)}px)`;
+  }
+  stick.addEventListener('pointerdown',e=>{if(!running||stickId!==null||(e.pointerType==='mouse'&&e.button!==0))return;e.preventDefault();stickId=e.pointerId;capture(stick,e.pointerId);stick.classList.add('engaged');updateStick(e);});
+  stick.addEventListener('pointermove',e=>{if(running&&e.pointerId===stickId)updateStick(e);});
+  for(const type of ['pointerup','pointercancel','lostpointercapture'])stick.addEventListener(type,e=>releaseInputPointer(e.pointerId));
+  const fireButton=$('fire');
+  fireButton.addEventListener('pointerdown',e=>{
+    if(!running||fireTouchId!==null||(e.pointerType==='mouse'&&e.button!==0))return;e.preventDefault();lastFirePress=performance.now();fireTouchId=e.pointerId;fireTouchX=e.clientX;fireTouchY=e.clientY;
+    capture(fireButton,e.pointerId);fireButton.classList.add('held');startPrimary(e.pointerId);
+  });
+  fireButton.addEventListener('pointermove',e=>{if(!running||fireTouchId!==e.pointerId||e.pointerType==='mouse')return;applyTouchLook(e.clientX-fireTouchX,e.clientY-fireTouchY);fireTouchX=e.clientX;fireTouchY=e.clientY;});
+  for(const type of ['pointerup','pointercancel','lostpointercapture'])fireButton.addEventListener(type,e=>releaseInputPointer(e.pointerId));
+  fireButton.addEventListener('click',e=>{if(e.detail===0&&performance.now()-lastFirePress>350)requestPrimaryShot();});
+  for(const id of ['up','down']){
+    const button=$(id);button.addEventListener('pointerdown',e=>{if(!running||touchOwners[id]!==null||(e.pointerType==='mouse'&&e.button!==0))return;e.preventDefault();touchOwners[id]=e.pointerId;if(id==='up')ascend=true;else descend=true;button.classList.add('held');capture(button,e.pointerId);});
+    for(const type of ['pointerup','pointercancel','lostpointercapture'])button.addEventListener(type,e=>releaseInputPointer(e.pointerId));
+  }
+  $('touchBoost').addEventListener('click',touchBoostToggle);
+  window.addEventListener('contextmenu',e=>{if(running&&touchActive)e.preventDefault();});
+  window.addEventListener('resize', () => {
+    updateTouchLayout();camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+    applyQuality();
+  });
+  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); running = false; fail('3D görüntü kesildi. Oyunu yeniden başlatmayı dene.'); });
+  applyMap(profile.selectedMap);reset();saveProfile();showPanel('home');
+  let lastDraw=0;
+  function frame(time) {
+    const dt = Math.min(Math.max((time - last) / 1000, 0), .04); last = time;
+    if(running)update(dt);else{animateRotors(player,dt);if(['success','defeat','practice-result'].includes(activeView))updateEffects(dt);}
+    updateAudio();if(document.hidden||(!running&&touchActive&&time-lastDraw<50)){requestAnimationFrame(frame);return;}
+    const drawDelta=Math.min(.1,(time-lastDraw)/1000);lastDraw=time;if(!renderGarage(drawDelta))renderWorld();requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+
+
+
+</script>
+
+<script id="operation-expansion-script">
+(()=>{
+'use strict';
+const q=id=>document.getElementById(id);
+const state={active:false,stage:0,time:0,score:0,credits:0,boss:false,bossHp:100,bossPhase:1,lastDamage:0,components:{LM:100,RM:100,CAM:100,RAD:100,WPN:100},nextEvent:8};
+const stages=['RADAR TEMASI','TAKİP','ÇATIŞMA','KAÇAN HEDEF','KOVALAMACA','ÜSSE DÖNÜŞ'];
+const ui=document.createElement('div');ui.className='operation-console';ui.innerHTML='<strong>DİNAMİK OPERASYON</strong><div class="opline"><span id="opStage">BEKLEMEDE</span><span id="opTimer">--</span></div><div class="opline"><span>SKOR</span><b id="opScore">0</b></div><div class="component-grid"><i id="cLM">SOL 100</i><i id="cRM">SAĞ 100</i><i id="cCAM">KAM 100</i><i id="cRAD">RAD 100</i><i id="cWPN">SİL 100</i></div>';document.body.appendChild(ui);
+const boss=document.createElement('div');boss.className='boss-hud hidden';boss.innerHTML='<b id="bossName">BOSS // TITAN-X</b><div class="boss-bar"><i id="bossBar"></i></div><span id="bossPhase">FAZ 1 · ZIRH</span>';document.body.appendChild(boss);
+const cam=document.createElement('div');cam.className='camera-damage';document.body.appendChild(cam);
+function toast(t){const e=document.createElement('div');e.className='operation-toast';e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),2100)}
+function render(){q('opStage').textContent=state.active?stages[state.stage]:'BEKLEMEDE';q('opTimer').textContent=state.active?Math.max(0,Math.ceil(18-state.time))+' sn':'--';q('opScore').textContent=state.score;for(const k of Object.keys(state.components)){const e=q('c'+k),v=Math.round(state.components[k]);e.textContent=({LM:'SOL ',RM:'SAĞ ',CAM:'KAM ',RAD:'RAD ',WPN:'SİL '})[k]+v;e.className=v<30?'critical':v<60?'warn':''}cam.classList.toggle('on',state.components.CAM<45);boss.classList.toggle('hidden',!state.boss);q('bossBar').style.width=state.bossHp+'%';q('bossPhase').textContent='FAZ '+state.bossPhase+' · '+(state.bossPhase===1?'ZIRH':state.bossPhase===2?'SİLAHLAR':'ÇEKİRDEK')}
+function start(){if(state.active)return;state.active=true;state.stage=0;state.time=0;state.score=0;state.nextEvent=6;toast('OPERASYON BAŞLADI · RADAR TEMASI');render()}
+function advance(){state.score+=150+state.stage*50;state.stage++;state.time=0;if(state.stage>=stages.length){startBoss();return}toast('YENİ AŞAMA · '+stages[state.stage])}
+function damageComponent(amount){const keys=Object.keys(state.components),k=keys[Math.floor(Math.random()*keys.length)];state.components[k]=Math.max(0,state.components[k]-amount);toast('HASAR · '+({LM:'SOL MOTOR',RM:'SAĞ MOTOR',CAM:'KAMERA',RAD:'RADAR',WPN:'SİLAH'})[k]);render()}
+function repair(){for(const k in state.components)state.components[k]=100;toast('TÜM SİSTEMLER ONARILDI');render()}
+function startBoss(){state.boss=true;state.stage=stages.length-1;state.time=0;state.bossHp=100;state.bossPhase=1;toast('BOSS TEMASI · TITAN-X')}
+function hitBoss(n=4){if(!state.boss)return;state.bossHp=Math.max(0,state.bossHp-n*(state.components.WPN<40?.55:1));const old=state.bossPhase;state.bossPhase=state.bossHp>66?1:state.bossHp>32?2:3;if(old!==state.bossPhase)toast('TITAN-X · FAZ '+state.bossPhase);if(state.bossHp<=0){state.boss=false;state.active=false;state.score+=1500;const stars=state.score>2400?3:state.score>1800?2:1;state.credits=stars*750;toast('BOSS YOK EDİLDİ · '+'★'.repeat(stars)+' · +'+state.credits+' KREDİ');try{const key='droneArenaOperationCredits';localStorage.setItem(key,String((+localStorage.getItem(key)||0)+state.credits))}catch(e){}}render()}
+window.DroneOperations={start,advance,damage:damageComponent,repair,hitBoss,state};
+document.addEventListener('keydown',e=>{if(e.code==='KeyO')start();if(e.code==='KeyB'&&state.active)startBoss();if(e.code==='KeyH')hitBoss(8);if(e.code==='KeyJ')damageComponent(22);if(e.code==='KeyU')repair()});
+let last=performance.now();function loop(now){const dt=Math.min(.1,(now-last)/1000);last=now;if(state.active){state.time+=dt;state.nextEvent-=dt;if(state.time>=18&&!state.boss)advance();if(state.nextEvent<=0){state.nextEvent=7+Math.random()*7;if(Math.random()<.62)damageComponent(8+Math.random()*15);if(state.boss&&Math.random()<.7){damageComponent(12+state.bossPhase*4);toast(state.bossPhase===3?'BOSS ÇEKİRDEK SALDIRISI':'BOSS SALDIRISI · KAÇIN')}}}render();requestAnimationFrame(loop)}requestAnimationFrame(loop);
+setTimeout(()=>toast('YENİ: O = DİNAMİK OPERASYON · H = BOSS TEST VURUŞU'),1200);
+})();
+</script>
+</body>
+</html>
