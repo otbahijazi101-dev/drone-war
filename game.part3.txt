@@ -1,0 +1,400 @@
+    return `<div class="stat-strip"><div class="stat-item"><b>${level}</b><small>PİLOT SEVİYESİ</small></div>
+      <div class="stat-item"><b>${profile.credits}</b><small>KREDİ</small></div>
+      <div class="stat-item"><b>${Object.keys(profile.completed).length} / ${MISSIONS.length}</b><small>TAMAMLANAN</small></div>
+      <div class="stat-item"><b>${profile.bestScore}</b><small>EN İYİ PUAN</small></div></div>
+      <div class="menu-progress-label"><span>Tecrübe ${profile.xp}</span><span>${level >= 30 ? 'Azami seviye' : `${end} XP → seviye ${level+1}`}</span></div>
+      <div class="mini-progress"><i style="width:${progress}%"></i></div>`;
+  }
+  function actionButton(action, label, kind = '', attr = '') {
+    return `<button type="button" class="menu-btn ${kind}" data-action="${action}" ${attr}>${label}</button>`;
+  }
+  function droneStatsHTML(id=profile.selectedDrone){
+    const v=flightStats(id),rows=[['ZIRH',v.hp,'can',300],['NORMAL ATIŞ',v.damage,'hasar',8],['UÇUŞ HIZI',v.speed,'m/sn',42],['FÜZE',v.missile,'hasar',40]];
+    return `<div class="drone-stats">${rows.map(([name,value,unit,limit])=>`<div><span>${name}</span><b>${numberText(value)} <small>${unit}</small></b><i><em style="width:${Math.min(100,value/limit*100)}%"></em></i></div>`).join('')}</div>`;
+  }
+  function upgradeEffectHTML(up){
+    const now=flightStats(),next=flightStats(profile.selectedDrone,{...profile.upgrades,[up.id]:Math.min(UP_MAX,profile.upgrades[up.id]+1)});
+    const lines={hull:[['Azami can','hp','']],weapon:[['Mermi hasarı','damage','']],motor:[['Uçuş hızı','speed',' m/sn'],['Takviye hızı','fast',' m/sn'],['Enerji','boost','']],missile:[['Füze hasarı','missile',''],['Dolum','reload',' sn'],['Kilit','lock',' sn']]}[up.id];
+    return `<dl class="upgrade-values">${lines.map(([name,key,unit])=>`<div><dt>${name}</dt><dd><b>${numberText(now[key])}${unit}</b>${profile.upgrades[up.id]<UP_MAX?`<span>→</span><strong>${numberText(next[key])}${unit}</strong>`:'<small>MAKS.</small>'}</dd></div>`).join('')}</dl>`;
+  }
+  function fleetModels(){
+    let models=DRONES.filter(d=>(!fleetOwned||ownsDrone(d.id))&&(fleetFilter==='all'||d.class===fleetFilter));
+    if(fleetSort==='price')models.sort((a,b)=>a.price-b.price);if(fleetSort==='power')models.sort((a,b)=>rating(b.id)-rating(a.id));
+    return models;
+  }
+  function previewHTML(){return `<div id="garageStage" class="garage-stage" role="img" aria-label="Drone üç boyutlu önizlemesi; sürükleyerek döndür"><div class="stage-watermark">DRONE LAB / 06</div></div><div class="preview-tools"><span>SÜRÜKLE: DÖNDÜR · TEKERLEK: YAKINLAŞ</span>${actionButton('preview-reset','GÖRÜNÜMÜ SIFIRLA','compact')}</div>`;}
+  function fleetPanelHTML(){
+    const model=droneById(garageModel),owned=ownsDrone(model.id),selected=profile.selectedDrone===model.id,available=profile.credits>=model.price&&pilotLevel()>=model.level;
+    return `<div class="fleet-header"><div><div class="eyebrow">PİLOTUN FİLOSU</div><h1>Drone garajı</h1><p>${profile.ownedDrones.length} / ${DRONES.length} drone · aktif: ${droneById(profile.selectedDrone).name}</p></div><div class="garage-wallet"><b>${profile.credits}</b><span>KREDİ · PİLOT ${pilotLevel()}</span></div></div>
+      <nav class="garage-nav">${actionButton('home','ANA MENÜ','compact')}${actionButton('hangar','PARÇA YÜKSELT','compact')}${actionButton('play','GÖREVE BAŞLA','primary compact')}</nav>
+      <div class="fleet-toolbar"><div>${actionButton('fleet-all','HEPSİ',fleetOwned?'compact':'active compact')}${actionButton('fleet-owned','SAHİP OLDUKLARIM',fleetOwned?'active compact':'compact')}</div>
+        <div class="class-filter">${['all','D','C','B','A','S'].map(c=>actionButton(`class-${c}`,c==='all'?'TÜMÜ':c,fleetFilter===c?'active compact':'compact')).join('')}</div>
+        <label>SIRALA <select id="fleetSort" data-fleet-sort aria-label="Drone sıralaması">${[['default','Varsayılan'],['price','Fiyat'],['power','Güç puanı']].map(([k,v])=>`<option value="${k}" ${fleetSort===k?'selected':''}>${v}</option>`).join('')}</select></label></div>
+      <div class="fleet-layout"><div class="fleet-cards">${fleetModels().map(d=>`<article class="drone-card ${garageModel===d.id?'inspected':''} ${profile.selectedDrone===d.id?'equipped':''}">
+        <button type="button" class="drone-inspect" data-action="inspect-${d.id}" aria-label="${d.name} drone’unu incele"><div class="drone-card-title"><strong>${d.name}</strong><span class="drone-class class-${d.class}">${d.class} <b>${rating(d.id)}</b></span></div><small>${d.role}</small><img id="thumb-${d.id}" alt="${d.name} drone modeli" width="320" height="190"><span class="ownership">${profile.selectedDrone===d.id?'GÖREV İÇİN SEÇİLİ':ownsDrone(d.id)?'GARAJINDA':`PİLOT ${d.level} · ${d.price} KREDİ`}</span></button>
+        ${ownsDrone(d.id)?actionButton(`equip-${d.id}`,profile.selectedDrone===d.id?'SEÇİLİ':'BU DRONE’U SEÇ','drone-card-action',profile.selectedDrone===d.id?'disabled':''):actionButton(`inspect-${d.id}`,`${d.price} KREDİ · İNCELE`,'drone-card-action')}
+      </article>`).join('')||'<p class="empty-fleet">Bu filtrede drone yok. Diğer sınıfları veya tüm modelleri seç.</p>'}</div>
+      <aside class="fleet-detail"><div class="detail-title"><div><small>${model.role}</small><h2>${model.name}</h2></div><span class="drone-class class-${model.class}">${model.class} <b>${rating(model.id)}</b></span></div>
+        ${previewHTML()}${droneStatsHTML(model.id)}<p class="detail-note">${owned?'Parça yükseltmelerin bu değerlere dahildir.':`Açmak için pilot seviyesi ${model.level} ve ${model.price} kredi gerekir.`}</p>
+        <div class="detail-actions">${owned?actionButton(`equip-${model.id}`,selected?'GÖREV İÇİN SEÇİLİ':'BU DRONE’U SEÇ','primary',selected?'disabled':''):actionButton(`purchase-${model.id}`,`${model.price} KREDİ · SATIN AL`,'primary',available?'':'disabled')}
+        ${actionButton(`customize-${model.id}`,'KİŞİSELLEŞTİR','',owned?'':'disabled')}${actionButton(`try-${model.id}`,'TEST UÇUŞUNDA DENE')}</div></aside></div><p class="garage-message" role="status">${garageMessage}</p>`;
+  }
+  function customizePanelHTML(){
+    const model=droneById(garageModel),paint=dronePaint(model.id);
+    return `<div class="fleet-header"><div><div class="eyebrow">${model.name} · ${model.role}</div><h1>Kişiselleştirme</h1><p>Görünüm seçimlerin otomatik kaydedilir.</p></div>${actionButton('fleet','GARAJA DÖN','compact')}</div>
+      <div class="customize-layout"><div class="customize-preview">${previewHTML()}${droneStatsHTML(model.id)}</div><div class="paint-panel">
+        <h2>Kaplama</h2><div class="finish-tabs">${Object.entries(FINISHES).map(([key,name])=>actionButton(`finish-${key}`,name,paint.finish===key?'active compact':'compact')).join('')}</div>
+        <h2>Gövde rengi · 32 koyu ton</h2><p class="paint-choice-name">${PAINT_COLORS.find(c=>c[0]===paint.color)?.[1]||'Özel renk'}</p><div class="paint-swatches">${PAINT_COLORS.map(([color,name],i)=>`<button type="button" data-action="paint-${i}" class="paint-swatch ${paint.color===color?'selected':''}" style="--paint:${color}" aria-label="${name}" title="${name}" aria-pressed="${paint.color===color}">${paint.color===color?'✓':''}</button>`).join('')}</div>
+        <label class="custom-paint-picker"><span>Kendi rengini seç<small>İstediğin tonu renk seçiciden belirle.</small></span><input id="customPaint" type="color" value="${paint.color}" aria-label="Özel gövde rengi"><code>${paint.color.toUpperCase()}</code></label>
+        <h2>Pervane</h2><div class="finish-tabs">${actionButton('blades-2','ÇİFT KANAT',paint.blades===2?'active compact':'compact')}${actionButton('blades-3','ÜÇ KANAT',paint.blades===3?'active compact':'compact')}</div>
+        <h2>Seyir ışıkları</h2><div class="paint-swatches led-swatches">${LED_COLORS.map(([color,name],i)=>`<button type="button" data-action="led-${i}" class="paint-swatch ${paint.led===color?'selected':''}" style="--paint:${color}" aria-label="${name} seyir ışığı" aria-pressed="${paint.led===color}">${paint.led===color?'✓':''}</button>`).join('')}</div>
+        <p class="detail-note">Renk, kaplama, pervane ve ışıklar görünümü değiştirir. Performans değerlerini parça yükseltmeleri artırır.</p>
+        <div class="menu-actions">${actionButton('paint-reset','FABRİKA GÖRÜNÜMÜ','compact')}${actionButton('hangar','PARÇA YÜKSELT','primary compact')}</div>
+      </div></div><p class="garage-message" role="status">${garageMessage}</p>`;
+  }
+  function buyDrone(id){
+    const d=DRONES.find(d=>d.id===id);if(!d||ownsDrone(id)||profile.credits<d.price||pilotLevel()<d.level)return false;
+    profile.credits-=d.price;profile.ownedDrones.push(id);profile.selectedDrone=id;garageModel=id;garageMessage=`${d.name} garajına eklendi ve görev için seçildi.`;
+    saveProfile();renderPanel();return true;
+  }
+  function equipDrone(id){
+    if(!ownsDrone(id))return false;profile.selectedDrone=id;garageModel=id;garageMessage=`${droneById(id).name} görev için seçildi.`;saveProfile();renderPanel();return true;
+  }
+  function changePaint(key,value){
+    if(!ownsDrone(garageModel))return false;
+    const paint=dronePaint(garageModel);paint[key]=value;
+    if(key==='color'&&paint.finish==='factory')paint.finish='solid';
+    if(key==='finish'&&value==='factory')paint.color=droneById(garageModel).color;
+    profile.paintJobs[garageModel]=cleanPaint(garageModel,paint);garageMessage='Görünüm kaydedildi.';saveProfile();renderPanel();return true;
+  }
+  function fleetAction(action){
+    if(action==='fleet'){garageModel=profile.selectedDrone;garageMessage='';showPanel('fleet');return true;}
+    if(action==='fleet-all'||action==='fleet-owned'){fleetOwned=action==='fleet-owned';renderPanel();return true;}
+    if(action.startsWith('class-')){const cls=action.slice(6);if(['all','D','C','B','A','S'].includes(cls))fleetFilter=cls;renderPanel();return true;}
+    const [op,...parts]=action.split('-'),value=parts.join('-');
+    if(op==='inspect'){if(DRONES.some(d=>d.id===value)){garageModel=value;garageMessage='';renderPanel();}return true;}
+    if(op==='purchase'){buyDrone(value);return true;}
+    if(op==='equip'){equipDrone(value);return true;}
+    if(op==='customize'){if(ownsDrone(value)){garageModel=value;garageMessage='';showPanel('customize');}return true;}
+    if(op==='finish'){if(Object.hasOwn(FINISHES,value))changePaint('finish',value);return true;}
+    if(op==='paint'&&value==='reset'){if(ownsDrone(garageModel)){profile.paintJobs[garageModel]=defaultPaint(garageModel);garageMessage='Fabrika görünümü uygulandı.';saveProfile();renderPanel();}return true;}
+    if(op==='paint'){const c=PAINT_COLORS[Number(value)];if(c)changePaint('color',c[0]);return true;}
+    if(op==='led'){const c=LED_COLORS[Number(value)];if(c)changePaint('led',c[0]);return true;}
+    if(op==='blades'){if(value==='2'||value==='3')changePaint('blades',Number(value));return true;}
+    if(action==='preview-reset'){previewAngle=.65;previewTilt=.30;previewDistance=8.8;previewIdle=0;return true;}
+    return false;
+  }
+  function initGarageRenderer(){
+    if(garageRenderer)return true;
+    try{
+      garageRenderer=new T.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:true,powerPreference:'low-power'});
+      garageRenderer.setPixelRatio(1);garageRenderer.outputEncoding=T.sRGBEncoding;garageRenderer.toneMapping=T.ACESFilmicToneMapping;garageRenderer.toneMappingExposure=1.2;
+      garageRenderer.shadowMap.enabled=profile.settings.shadows&&!touchActive;garageRenderer.shadowMap.type=T.PCFSoftShadowMap;
+      garageScene=new T.Scene();garageScene.background=new T.Color(0x172631);garageScene.fog=new T.Fog(0x172631,15,32);
+      garageCamera=new T.PerspectiveCamera(42,1,.1,70);
+      garageScene.add(new T.HemisphereLight(0xdceeff,0x43534b,1.8));
+      const key=new T.DirectionalLight(0xfff0d8,2.6);key.position.set(-4,9,6);key.castShadow=true;key.shadow.mapSize.set(1024,1024);
+      Object.assign(key.shadow.camera,{left:-6,right:6,top:6,bottom:-6,near:.1,far:25});key.shadow.bias=-.0004;garageScene.add(key);
+      const rim=new T.DirectionalLight(0x80b8e2,1.8);rim.position.set(5,3,-5);garageScene.add(rim);
+      const front=new T.DirectionalLight(0xffffff,.8);front.position.set(0,1,8);garageScene.add(front);
+      const floor=mesh(garageScene,new T.PlaneGeometry(60,60),steel(0x293b46,.72,.25),0,-1.31,0);floor.rotation.x=-Math.PI/2;floor.castShadow=false;
+      const platform=mesh(garageScene,new T.CylinderGeometry(3.5,3.65,.16,64),steel(0x324953,.52,.5),0,-1.25,0);platform.receiveShadow=true;
+      const halo=mesh(garageScene,new T.TorusGeometry(3.48,.028,6,72),new T.MeshBasicMaterial({color:0xd5b654}),0,-1.16,0);halo.rotation.x=-Math.PI/2;
+      const c=garageRenderer.domElement;c.style.width='100%';c.style.height='100%';c.style.touchAction='none';c.style.display='block';c.setAttribute('aria-label','Drone üç boyutlu görünüm; sürükleyerek döndür');
+      c.addEventListener('pointerdown',e=>{if(e.pointerType!=='touch'&&e.button!==0)return;e.preventDefault();previewPointer=e.pointerId;previewLastX=e.clientX;previewLastY=e.clientY;previewIdle=4;try{c.setPointerCapture(e.pointerId)}catch(_){}});
+      c.addEventListener('pointermove',e=>{if(e.pointerId!==previewPointer)return;previewAngle-=(e.clientX-previewLastX)*.009;previewTilt=clamp(previewTilt+(e.clientY-previewLastY)*.006,.12,.85);previewLastX=e.clientX;previewLastY=e.clientY;previewIdle=4;});
+      for(const event of ['pointerup','pointercancel','lostpointercapture'])c.addEventListener(event,e=>{if(e.pointerId===previewPointer)previewPointer=null;});
+      c.addEventListener('wheel',e=>{e.preventDefault();previewDistance=clamp(previewDistance+e.deltaY*.008,6.3,14);previewIdle=4;},{passive:false});
+      c.addEventListener('webglcontextlost',e=>{e.preventDefault();if($('garageStage'))$('garageStage').innerHTML='<p class="preview-fallback">Önizleme durdu. Oyunu yeniden açarak görüntüyü yükleyebilirsin.</p>';});
+      return true;
+    }catch(_){if(garageRenderer){try{garageRenderer.dispose()}catch(_){}}garageRenderer=null;return false;}
+  }
+  function setPreviewDrone(id){
+    if(previewDrone)disposeObject(previewDrone);
+    previewDrone=makeDrone(false,'scout',id);previewDrone.position.set(0,.1,0);garageScene.add(previewDrone);
+    previewDrone.updateMatrixWorld(true);const bounds=new T.Box3().setFromObject(previewDrone),sphere=bounds.getBoundingSphere(new T.Sphere());
+    previewDrone.userData.previewRadius=sphere.radius;previewDrone.userData.previewCenter=sphere.center.clone();
+  }
+  function framePreviewCamera(width,height,angle=previewAngle,tilt=previewTilt,distance=previewDistance){
+    garageCamera.aspect=width/height;garageCamera.updateProjectionMatrix();
+    const vertical=T.MathUtils.degToRad(garageCamera.fov/2),halfAngle=Math.min(vertical,Math.atan(Math.tan(vertical)*width/height));
+    const fitted=Math.max(8.8,(previewDrone?.userData.previewRadius||3)/Math.sin(halfAngle)+.4)*distance/8.8;
+    const center=previewDrone?.userData.previewCenter||V();
+    garageCamera.position.copy(center).add(V(Math.sin(angle)*Math.cos(tilt)*fitted,Math.sin(tilt)*fitted,Math.cos(angle)*Math.cos(tilt)*fitted));garageCamera.lookAt(center);
+  }
+  function mountGaragePreview(){
+    const host=$('garageStage');if(!host)return;
+    if(!initGarageRenderer()){host.innerHTML='<p class="preview-fallback">Bu cihaz 3D önizlemeyi açamadı. Drone seçimi ve yükseltmeleri kullanabilirsin.</p>';return;}
+    if(activeView==='fleet')for(const d of fleetModels()){
+      const img=$(`thumb-${d.id}`);if(!img)continue;
+      const key=d.id+JSON.stringify(dronePaint(d.id))+JSON.stringify(profile.upgrades);
+      try{
+        if(!thumbnailCache.has(key)){
+          setPreviewDrone(d.id);garageRenderer.setSize(320,190,false);framePreviewCamera(320,190,.65,.33,10.2);
+          garageRenderer.render(garageScene,garageCamera);thumbnailCache.set(key,garageRenderer.domElement.toDataURL('image/png'));
+          if(thumbnailCache.size>48)thumbnailCache.delete(thumbnailCache.keys().next().value);
+        }
+        img.src=thumbnailCache.get(key);
+      }catch(_){img.alt=`${d.name} · ${d.role}`;}
+    }
+    setPreviewDrone(garageModel);host.appendChild(garageRenderer.domElement);previewSize='';previewPointer=null;renderGarage(0);
+  }
+  function renderGarage(dt){
+    if(running||!['fleet','customize'].includes(activeView)||!garageRenderer||!previewDrone)return false;
+    const host=$('garageStage');if(!host)return false;const rect=host.getBoundingClientRect();
+    const width=Math.max(160,Math.round(rect.width)),height=Math.max(160,Math.round(rect.height));
+    const size=width+'x'+height;if(size!==previewSize){garageRenderer.setSize(width,height,false);previewSize=size;}
+    previewIdle=Math.max(0,previewIdle-dt);if(!previewPointer&&previewIdle===0)previewAngle+=dt*.13;
+    framePreviewCamera(width,height);previewDrone.position.y=.1+Math.sin(performance.now()*.00065)*.025;
+    garageRenderer.render(garageScene,garageCamera);return true;
+  }
+  function chasePanelHTML(){
+    return `<div class="eyebrow">YENİ MOD · KAÇIŞ VADİSİ</div><h1>Büyük Kaçış</h1><p>1,1 × 1,1 km’lik sanayi vadisinde takipçilerden kurtul. Dört kontrol noktasını sırayla geç, ardından yeşil çıkışa ulaş.</p>
+      <div class="chase-brief"><div class="chase-map" aria-label="Kontrol noktaları ve tamir alanlarını gösteren rota şeması"><svg viewBox="0 0 560 400" role="img" aria-label="Kaçış rotası"><rect width="560" height="400" fill="#152a29"/><path d="M70 0V400M280 0V400M490 0V400M0 70H560M0 200H560M0 330H560" stroke="#3a5250" stroke-width="14"/><path d="M280 345L100 290L115 82L440 95L460 300L280 365" fill="none" stroke="#d7ba76" stroke-width="3" stroke-dasharray="8 6"/>${[[100,290],[115,82],[440,95],[460,300]].map(([x,y],i)=>`<circle cx="${x}" cy="${y}" r="13" fill="#d7ba76"/><text x="${x}" y="${y+4}" text-anchor="middle" fill="#15231c" font-size="12" font-family="sans-serif">${i+1}</text>`).join('')}<g fill="#7bd5aa"><circle cx="158" cy="210" r="8"/><circle cx="300" cy="54" r="8"/><circle cx="425" cy="238" r="8"/><path d="M269 354h22v22h-22z"/></g></svg><span>SARI: KONTROL NOKTASI · YEŞİL: TAMİR / ÇIKIŞ</span></div>
+      <div class="chase-rules"><h2>Kaç, saklan, yeniden havalan</h2><p>Binalar görüşü ve atışları keser. Düşmanlar son gördükleri yere yönelir; izini kaybettirerek tamire zaman kazanabilirsin.</p><p><b>3 tamir alanı:</b> 32 metre yakına gel, yavaşla ve <kbd>${touchLabel('land','İN / TAMİR')}</kbd> ile iniş yardımını aç. Tehdit yokken 4 saniyede gövde, motor ve mühimmat yenilenir.</p><p>Hareket tuşu inişi iptal eder. Her alan, kullanıldıktan sonra 45 saniye dinlenir.</p><p><kbd>${touchLabel('camera','KAMERA')}</kbd> ile FPV / dış kamera. ${touchActive?'Sol çubukla uç. Ateşe basılı tutup sürükleyerek ateş ederken yön ve irtifanı değiştir.':'Fareyle irtifa ve yön, sol tuş basılı: seri ateş.'}</p></div></div>
+      <div class="difficulty-picks">${Object.entries(DIFFICULTIES).map(([id,d])=>actionButton(`difficulty-${id}`,`${d.name} · ${d.time} sn`,profile.settings.difficulty===id?'active':'')).join('')}</div><p class="detail-note">İlk başarılı kaçış: 320 kredi. Sonraki kaçışlar: 145 kredi. Kampanya görev sırası değişmez.</p>
+      <div class="menu-actions">${actionButton('start-chase','KOVALAMACAYA BAŞLA','primary')}${actionButton('fleet','DRONE GARAJI')}${actionButton('home','ANA MENÜ')}</div>`;
+  }
+  function backupPanelHTML(){
+    return `<div class="eyebrow">PİLOT KAYDI</div><h1>Kayıt yedeği</h1><p>Drone’ların, parçaların, renklerin, görevlerin, rekorların ve ayarların tek JSON dosyasında saklanır. Yeni oyun dosyasına veya başka tarayıcıya taşıyabilirsin.</p>
+      <div class="menu-grid"><div class="menu-card"><strong>Yedeği indir</strong><p>Bu tarayıcıdaki güncel ilerlemenin bir kopyasını al.</p>${actionButton('export-save','KAYDI DOSYAYA İNDİR','primary compact')}</div><div class="menu-card"><strong>Yedek yükle</strong><p>Daha önce indirdiğin Drone Arena kayıt dosyasını seç.</p><label class="backup-picker">JSON DOSYASI SEÇ<input id="backupFile" type="file" accept=".json,application/json"></label></div></div>
+      ${pendingBackup?`<div class="backup-preview"><strong>Yüklenmeye hazır</strong><p>${pendingBackup.credits} kredi · ${pendingBackup.ownedDrones.length} drone · ${Object.keys(pendingBackup.completed).length} görev</p><p>Mevcut ilerlemenin yerini bu yedek alacak.</p>${actionButton('apply-backup','BU YEDEĞİ YÜKLE','primary')}${actionButton('cancel-backup','VAZGEÇ')}</div>`:''}
+      <p class="garage-message" role="status">${backupMessage}</p><div class="menu-actions">${backupUndo?actionButton('undo-backup','SON YÜKLEMEYİ GERİ AL'):''}${actionButton('home','ANA MENÜ')}</div>`;
+  }
+  function exportSave(){
+    const text=JSON.stringify({format:'drone-arena-save',version:1,createdAt:new Date().toISOString(),profile},null,2);
+    try{const blob=new Blob([text],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`drone-arena-kayit-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);backupMessage='Kayıt yedeği indirildi.';}catch(_){backupMessage='Dosya indirilemedi. Tarayıcının indirme iznini kontrol et.';}
+    renderPanel();
+  }
+  async function readBackup(file){
+    pendingBackup=null;if(!file)return;
+    try{
+      if(file.size>262144)throw new Error('Boyut');const data=JSON.parse(await file.text());
+      if(data?.format!=='drone-arena-save'||data.version!==1||!data.profile||typeof data.profile!=='object'||!Number.isFinite(data.profile.credits)||!Number.isFinite(data.profile.xp)||!Array.isArray(data.profile.ownedDrones))throw new Error('Biçim');
+      pendingBackup=cleanProfile(data.profile);backupMessage='Dosya kontrol edildi. Aşağıdan yüklemeyi tamamlayabilirsin.';
+    }catch(_){backupMessage='Bu dosya geçerli bir Drone Arena yedeği değil. İlerlemen değiştirilmedi.';}
+    if(activeView==='backup')renderPanel();
+  }
+  function useBackup(value){
+    running=false;practiceActive=false;mission=null;profile=cleanProfile(value);selectedMission=profile.unlockedMission;sessionDifficulty=profile.settings.difficulty;
+    thumbnailCache.clear();applyMap(profile.selectedMap);reset();applyQuality();saveProfile();pendingBackup=null;backupMessage='Kayıt yüklendi. Uçuşa devam edebilirsin.';showPanel('backup');
+  }
+  function flightFeatureAction(a){
+    if(a==='start-chase'){startChase();return true;}
+    if(a.startsWith('difficulty-')){const id=a.slice(11);if(DIFFICULTIES[id]){profile.settings.difficulty=id;saveProfile();renderPanel()}return true;}
+    if(a==='camera'){toggleCamera();if(!running)renderPanel();return true;}
+    if(a==='backup'){backupMessage='';pendingBackup=null;showPanel('backup');return true;}
+    if(a==='export-save'){exportSave();return true;}
+    if(a==='cancel-backup'){pendingBackup=null;renderPanel();return true;}
+    if(a==='apply-backup'){if(pendingBackup){backupUndo=JSON.parse(JSON.stringify(profile));useBackup(pendingBackup)}return true;}
+    if(a==='undo-backup'){if(backupUndo){const old=backupUndo;backupUndo=null;useBackup(old);backupMessage='Önceki ilerleme geri yüklendi.';renderPanel()}return true;}
+    return false;
+  }
+
+  function captureReport(outcome){
+    return {outcome,difficulty:sessionDifficulty,repairs:repairCount,collisions:collisionCount,motorHealth:Math.round(Math.min(...motorHP)),practice:practiceActive,missionId:mission?.id||0,map:missionMap,droneId:activeDroneId(),upgraded:practiceActive?practiceConfig.upgraded:true,
+      time:missionTime,kills:missionKills,score,shots:flightLog.shots,hits:combatLog.primaryHits,missiles:flightLog.missiles,missileHits:combatLog.missileHits,
+      accuracy:flightLog.shots?Math.min(100,combatLog.primaryHits/flightLog.shots*100):null,
+      damageTaken:combatLog.damageTaken,damageDealt:combatLog.damageDealt,distance:flightLog.distance,topSpeed:combatLog.topSpeed,
+      medals:[],record:null};
+  }
+  function storeMissionReport(win){
+    const r=sessionReport=captureReport(win?'success':'defeat');if(r.practice)return;
+    const key=recordKey(r.map,r.missionId,r.difficulty),old=profile.records[key];
+    const rec=old?{...old}:{attempts:0,wins:0,bestScore:0,bestTime:null,bestAccuracy:null,leastDamage:null};
+    rec.attempts++;
+    if(win){
+      rec.wins++;
+      if(!old?.wins)r.medals.push('İLK TAMAMLAMA');
+      else{
+        if(r.score>rec.bestScore)r.medals.push('PUAN REKORU');
+        if(rec.bestTime===null||r.time<rec.bestTime-.01)r.medals.push('SÜRE REKORU');
+        if(r.accuracy!==null&&(rec.bestAccuracy===null||r.accuracy>rec.bestAccuracy+.01))r.medals.push('İSABET REKORU');
+        if(rec.leastDamage===null||r.damageTaken<rec.leastDamage)r.medals.push('EN AZ HASAR');
+      }
+      rec.bestScore=Math.max(rec.bestScore,r.score);rec.bestTime=rec.bestTime===null?r.time:Math.min(rec.bestTime,r.time);
+      if(r.accuracy!==null)rec.bestAccuracy=rec.bestAccuracy===null?r.accuracy:Math.max(rec.bestAccuracy,r.accuracy);
+      rec.leastDamage=rec.leastDamage===null?r.damageTaken:Math.min(rec.leastDamage,r.damageTaken);
+    }
+    profile.records[key]=rec;r.record={...rec};saveProfile();
+  }
+  function reportHTML(r=sessionReport){
+    if(!r)return '';
+    const metric=(label,value,note='')=>`<div class="report-metric"><small>${label}</small><b>${value}</b><span>${note}</span></div>`;
+    return `<section class="flight-report"><div class="report-heading"><h2>${r.practice?'Test uçuşu ölçümleri':'Uçuş raporu'}</h2><span>${mapById(r.map).name} · ${droneById(r.droneId).name} · ${DIFFICULTIES[r.difficulty].name}</span></div>
+      <div class="report-metrics">${metric('SÜRE',formatDuration(r.time),'Mola süresi hariç')}${metric('NORMAL ATIŞ İSABETİ',percentText(r.accuracy),`${r.hits} isabet / ${r.shots} mermi`)}${metric('ALINAN HASAR',numberText(r.damageTaken),'Can kaybı')}${metric('VERİLEN HASAR',numberText(r.damageDealt),'Hedeflerin kaybettiği can')}${metric('FÜZE İSABETİ',`${r.missileHits} / ${r.missiles}`,'İsabet eden / fırlatılan')}${metric('AZAMİ HIZ',`${r.topSpeed.toFixed(1)} m/sn`,`${Math.round(r.distance)} metre uçuş`)}</div>
+      <p class="report-note">Çarpışma ${r.collisions} · Tamir ${r.repairs} · En düşük motor durumu ${r.motorHealth}%</p>
+      ${r.medals.length?`<div class="record-badges">${r.medals.map(m=>`<span>${m}</span>`).join('')}</div>`:''}
+      ${r.record?`<div class="record-summary"><strong>BU HARİTADA / BU GÖREVDE EN İYİ</strong><span>Puan ${r.record.bestScore}</span><span>Süre ${r.record.bestTime===null?'—':formatDuration(r.record.bestTime)}</span><span>İsabet ${percentText(r.record.bestAccuracy)}</span><span>Hasar ${r.record.leastDamage===null?'—':numberText(r.record.leastDamage)}</span></div><p class="report-note">Rekorlar başarıyla tamamlanan görevlerden kaydedilir. Atış yapılmayan uçuşların isabet oranı boş kalır.</p>`:''}
+    </section>`;
+  }
+  function recordsPanelHTML(){
+    return `<div class="eyebrow">PİLOT ARŞİVİ</div><h1>Kişisel rekorlar</h1><p>Her harita, görev ve zorluk için kayıtlar ayrı tutulur.</p>
+      <label class="record-map-label">HARİTA <select id="recordMap">${MAPS.map(m=>`<option value="${m.id}" ${recordMap===m.id?'selected':''}>${m.name}</option>`).join('')}</select></label>
+      <label class="record-map-label">ZORLUK <select id="recordDifficulty">${Object.entries(DIFFICULTIES).map(([id,d])=>`<option value="${id}" ${recordDifficulty===id?'selected':''}>${d.name}</option>`).join('')}</select></label>
+      <div class="record-list">${recordMissions(recordMap).map(m=>{const r=profile.records[recordKey(recordMap,m.id,recordDifficulty)];return `<article class="record-row"><div><strong>${m.id}. ${m.name}</strong><small>${r?`${r.wins} zafer / ${r.attempts} sonuçlanan deneme`:'Henüz uçuş raporu yok'}</small></div><dl><div><dt>PUAN</dt><dd>${r?.bestScore||'—'}</dd></div><div><dt>SÜRE</dt><dd>${r?.bestTime!=null?formatDuration(r.bestTime):'—'}</dd></div><div><dt>İSABET</dt><dd>${percentText(r?.bestAccuracy??null)}</dd></div><div><dt>EN AZ HASAR</dt><dd>${r?.leastDamage??'—'}</dd></div></dl></article>`}).join('')}</div>
+      <div class="menu-actions">${actionButton('home','ANA MENÜ','primary')}${actionButton('missions','GÖREVLER')}</div>`;
+  }
+  function practicePanelHTML(){
+    const base=flightStats(practiceConfig.droneId,STOCK_UPGRADES),up=flightStats(practiceConfig.droneId,profile.upgrades);
+    return `<div class="eyebrow">SERBEST DENEME ALANI</div><h1>Test uçuşu</h1><p>Tüm drone’ları satın almadan dene. Hedefler karşı ateş açmaz; süre sınırı yoktur. Kredi, XP ve görev rekorları bu modda değişmez.</p>
+      <div class="practice-setup"><label>DRONE<select id="practiceDrone">${DRONES.map(d=>`<option value="${d.id}" ${d.id===practiceConfig.droneId?'selected':''}>${d.name} · ${d.role}${ownsDrone(d.id)?' · GARAJINDA':''}</option>`).join('')}</select></label>
+      <label>ORTAM<select id="practiceMap">${MAPS.filter(m=>!m.chaseOnly).map(m=>`<option value="${m.id}" ${m.id===practiceConfig.map?'selected':''}>${m.name}</option>`).join('')}</select></label>
+      <label>PARÇALAR<select id="practiceParts"><option value="stock" ${!practiceConfig.upgraded?'selected':''}>Fabrika · yükseltmesiz</option><option value="current" ${practiceConfig.upgraded?'selected':''}>Mevcut yükseltmelerim</option></select></label>
+      <label>HEDEFLER<select id="practiceTargets"><option value="moving" ${practiceConfig.moving?'selected':''}>Hareketli</option><option value="static" ${!practiceConfig.moving?'selected':''}>Sabit</option></select></label></div>
+      <div class="compare-wrap"><table class="loadout-compare"><thead><tr><th>ÖZELLİK</th><th class="${!practiceConfig.upgraded?'selected-col':''}">FABRİKA</th><th class="${practiceConfig.upgraded?'selected-col':''}">MEVCUT PARÇALAR</th></tr></thead><tbody>${[['Can','hp',''],['Mermi hasarı','damage',''],['Uçuş hızı','speed',' m/sn'],['Takviye hızı','fast',' m/sn'],['Füze hasarı','missile',''],['Füze dolumu','reload',' sn']].map(([label,k,unit])=>`<tr><td>${label}</td><td>${numberText(base[k])}${unit}</td><td>${numberText(up[k])}${unit}</td></tr>`).join('')}</tbody></table></div>
+      <p class="detail-note">Uçuşta hızını ve son isabetin hasarını canlı görebilirsin. Şarjör, ısınma ve füze kilidi normal oyunla aynı çalışır.</p>
+      <div class="menu-actions">${actionButton('start-practice','TEST UÇUŞUNA BAŞLA','primary')}${actionButton('fleet','GARAJ')}${actionButton('home','ANA MENÜ')}</div>`;
+  }
+  function openPractice(id=profile.selectedDrone){
+    practiceConfig={droneId:DRONES.some(d=>d.id===id)?id:profile.selectedDrone,upgraded:true,moving:true,map:profile.selectedMap};showPanel('practice');
+  }
+  function startPractice(){
+    if(!DRONES.some(d=>d.id===practiceConfig.droneId))return false;
+    endlessActive=false;$('endlessHUD')?.classList.add('hidden');practiceActive=true;sessionDifficulty=profile.settings.difficulty;mission=PRACTICE_MISSION;missionMap=practiceConfig.map;applyMap(missionMap);reset();running=true;hidePanel();initAudio();last=performance.now();
+    for(let i=0;i<3;i++)spawnPracticeTarget();ui.missionStrip.classList.remove('hidden');notify('Test uçuşu · hedefler zararsız · dilediğin zaman bitir');return true;
+  }
+  function finishPractice(){
+    if(!practiceActive)return;
+    sessionReport=captureReport('practice');practiceHistory.unshift({...sessionReport});practiceHistory=practiceHistory.slice(0,4);
+    running=false;clearInputs();pendingMissile=false;practiceActive=false;showPanel('practice-result');
+  }
+  function practiceResultHTML(){
+    return `<div class="eyebrow">TEST UÇUŞU TAMAMLANDI</div><h1>Deneme raporu</h1><p>${sessionReport?.upgraded?'Mevcut yükseltmelerin':'Fabrika parçaları'} ile yapılan deneme. Kampanya ilerlemen değişmedi.</p>${reportHTML()}
+    ${practiceHistory.length>1?`<h2>Bu oturumdaki son denemeler</h2><div class="practice-history">${practiceHistory.map(r=>`<div><strong>${droneById(r.droneId).name}</strong><span>${r.upgraded?'Mevcut parçalar':'Fabrika'} · ${r.topSpeed.toFixed(1)} m/sn · ${percentText(r.accuracy)} isabet · ${numberText(r.damageDealt)} hasar</span></div>`).join('')}</div>`:''}
+    <div class="menu-actions">${actionButton('start-practice','AYNI AYARLARLA TEKRAR','primary')}${actionButton('practice-config','MODEL / PARÇA DEĞİŞTİR')}${actionButton('fleet','GARAJ')}${actionButton('home','ANA MENÜ')}</div>`;
+  }
+  function spawnPracticeTarget(){
+    if(!practiceActive||foes.filter(e=>!e.dead).length>=3)return false;
+    const used=foes.filter(e=>!e.dead).map(e=>e.slot);const slot=[0,1,2].find(i=>!used.includes(i));
+    const origin=[V(-18,9,-7),V(0,9,-31),V(20,13,-13)][slot];
+    const e={mesh:makeDrone(true,'striker'),hp:60,maxHP:60,radius:2.4,type:'striker',dead:false,slot,origin,phase:slot*1.7,velocity:V(),fire:Infinity,training:true};
+    e.mesh.position.copy(origin);scene.add(e.mesh);foes.push(e);return true;
+  }
+  function renewPracticeTargets(){
+    if(!practiceActive)return;foes.forEach(e=>disposeObject(e.mesh));foes=[];clearEffects();lockTarget=null;lockTime=0;
+    for(let i=0;i<3;i++)spawnPracticeTarget();notify('Hedefler yenilendi. Uçuş ölçümleri devam ediyor.');
+  }
+  function endlessPanelHTML(){
+    const bossNote='Her 5. seviyede ağır lider drone dalgası gelir.';
+    return `<div class="eyebrow">SERBEST OYUN · SONSUZ DALGALAR</div><h1>Sonsuz Arena</h1><p>Görev hedefi yok. Hayatta kaldığın sürece robot dalgalarını temizle; her seviyede rakipler daha dayanıklı, hızlı, saldırgan ve isabetli olur. ${bossNote}</p>
+      <div class="menu-card selected endless-card"><small>SON KAYIT</small><strong>EN YÜKSEK SEVİYE · ${endlessBest}</strong><p>Her dalga kredi verir. 5, 10, 15… seviyelerinde boss bonusu kazanırsın. Seviye ilerledikçe aynı anda sahadaki rakip sayısı da kontrollü biçimde artar.</p><span class="tag">SINIRSIZ · KAYIT OTOMATİK</span></div>
+      <div class="menu-grid three"><article class="menu-card"><small>DAYANIKLILIK</small><strong>Her seviye ↑</strong><p>Düşman canı kademeli artar.</p></article><article class="menu-card"><small>YAPAY ZEKÂ</small><strong>Daha agresif</strong><p>Hız, kaçınma ve atış sıklığı artar.</p></article><article class="menu-card"><small>BOSS</small><strong>Her 5 seviye</strong><p>Ağır zırhlı lider dalgası.</p></article></div>
+      <div class="menu-actions">${actionButton('start-endless','SONSUZ ARENAYA BAŞLA','primary')}${actionButton('maps',`HARİTA · ${mapById(profile.selectedMap).name}`)}${actionButton('fleet','DRONE GARAJI')}${actionButton('home','ANA MENÜ')}</div>`;
+  }
+  function updateEndlessHUD(){
+    const hud=$('endlessHUD');if(!hud)return;hud.classList.toggle('hidden',!endlessActive);
+    if(!endlessActive)return;
+    const remaining=Math.max(0,(mission?.goal||0)-missionKills),progress=mission?.goal?missionKills/mission.goal*100:0;
+    $('endlessLevelHUD').textContent=endlessLevel+(endlessBossWave(endlessLevel)?' · BOSS':'');
+    $('endlessRemainingHUD').textContent=endlessIntermission>0?'SONRAKİ DALGA':remaining;
+    $('endlessDifficultyHUD').textContent='%'+endlessDifficultyPercent();$('endlessBestHUD').textContent=endlessBest;
+    $('endlessTitle').textContent=endlessBossWave(endlessLevel)?'BOSS DALGASI':'SONSUZ ARENA';$('endlessTitle').classList.toggle('boss-wave',endlessBossWave(endlessLevel));
+    $('endlessProgressHUD').style.width=`${Math.min(100,progress)}%`;
+  }
+  function beginEndlessWave(level,first=false){
+    endlessLevel=level;endlessSpawned=0;endlessIntermission=0;missionKills=0;bossSpawned=false;mission=endlessMissionFor(level);spawnClock=.45;
+    endlessBest=Math.max(endlessBest,endlessLevel);try{localStorage.setItem('droneArenaEndlessBest',String(endlessBest))}catch(_){}
+    const count=Math.min(endlessConcurrentLimit(),endlessBossWave(level)?Math.max(1,mission.goal-1):mission.goal);
+    for(let i=0;i<count;i++)spawnEnemy();
+    notify(endlessBossWave(level)?`BOSS DALGASI · SEVİYE ${level}`:first?`SONSUZ ARENA · SEVİYE ${level}`:`SEVİYE ${level} · ROBOTLAR GÜÇLENDİ`);sound(endlessBossWave(level)?420:760,.18,.045);updateEndlessHUD();
+  }
+  function startEndless(){
+    practiceActive=false;endlessActive=true;endlessLevel=1;endlessSessionCredits=0;endlessWaveReward=0;sessionDifficulty=profile.settings.difficulty;missionMap=profile.selectedMap;applyMap(missionMap);mission=endlessMissionFor(1);reset();running=true;hidePanel();initAudio();last=performance.now();ui.missionStrip.classList.remove('hidden');beginEndlessWave(1,true);return true;
+  }
+  function completeEndlessWave(){
+    if(!endlessActive||endlessIntermission>0)return;
+    const base=45+endlessLevel*15,bossBonus=endlessBossWave(endlessLevel)?250+endlessLevel*12:0;endlessWaveReward=base+bossBonus;endlessSessionCredits+=endlessWaveReward;profile.credits+=endlessWaveReward;profile.bestScore=Math.max(profile.bestScore,score);saveProfile();
+    endlessIntermission=3;notify(`SEVİYE ${endlessLevel} TEMİZLENDİ · +${endlessWaveReward} KREDİ${bossBonus?' · BOSS BONUSU':''}`);sound(920,.22,.05);updateEndlessHUD();
+  }
+  function finishEndless(){
+    if(!endlessActive)return;running=false;clearInputs();pendingMissile=false;endlessBest=Math.max(endlessBest,endlessLevel);try{localStorage.setItem('droneArenaEndlessBest',String(endlessBest))}catch(_){};endlessActive=false;$('endlessHUD')?.classList.add('hidden');showPanel('endless-result');
+  }
+  function endlessResultHTML(){return `<div class="eyebrow">SONSUZ ARENA · UÇUŞ SONU</div><h1>Serbest oyun tamamlandı</h1><p>Ulaştığın seviye <strong>${endlessLevel}</strong>. Bu koşuda <strong>${endlessSessionCredits}</strong> kredi kazandın.</p><div class="stat-strip"><div class="stat-item"><b>${endlessLevel}</b><small>SEVİYE</small></div><div class="stat-item"><b>${score}</b><small>PUAN</small></div><div class="stat-item"><b>${endlessSessionCredits}</b><small>KREDİ</small></div><div class="stat-item"><b>${endlessBest}</b><small>EN İYİ</small></div></div><p class="endless-result-best">EN YÜKSEK SEVİYE · ${endlessBest}</p><div class="menu-actions">${actionButton('start-endless','YENİDEN BAŞLA','primary')}${actionButton('fleet','GARAJ')}${actionButton('home','ANA MENÜ')}</div>`;}
+
+  function expansionAction(a){
+    if(a==='endless'){showPanel('endless');return true;}
+    if(a==='start-endless'){startEndless();return true;}
+    if(a==='practice'){openPractice();return true;}
+    if(a.startsWith('try-')){openPractice(a.slice(4));return true;}
+    if(a==='start-practice'){startPractice();return true;}
+    if(a==='practice-config'){showPanel('practice');return true;}
+    if(a==='finish-practice'){finishPractice();return true;}
+    if(a.startsWith('map-')){const id=a.slice(4);if(id==='chase'){showPanel('chase');return true;}if(MAPS.some(m=>m.id===id)){profile.selectedMap=id;applyMap(id);saveProfile();renderPanel();}return true;}
+    if(a==='records'){recordMap=isChase()?'chase':profile.selectedMap;recordDifficulty=profile.settings.difficulty;showPanel('records');return true;}
+    return false;
+  }
+
+  function renderPanel() {
+    const mission = practiceActive?PRACTICE_MISSION:isChase()&&['pause','success','defeat'].includes(activeView)?CHASE_MISSION:MISSIONS[selectedMission - 1]; let html = '';
+    if (activeView === 'home') {
+      html = `<div class="eyebrow">ÇEVRİMDIŞI GÖREV SİSTEMİ</div><h1>Drone Arena</h1>
+        <p>Düşman dronları etkisiz hâle getir, görev ödülleri kazan ve hangarda kendi drone’unu geliştir.</p>${statsHTML()}${phoneHomeHTML()}
+        <div class="active-drone-strip"><span>AKTİF DRONE</span><strong>${droneById(profile.selectedDrone).name}</strong><span>${flightStats().hp} CAN · ${numberText(flightStats().speed)} m/sn · ${flightStats().damage} HASAR</span></div>
+        <div class="menu-card selected"><small>SEÇİLİ GÖREV · ${mission.id} / ${MISSIONS.length}</small><strong>${mission.name}${mission.boss?' · LİDER':''}</strong>
+        <p>${TYPE_LABELS[mission.kind]} · ${missionDescription(mission)} · ${mission.reward} kredi<br><span class="selected-map-note">ORTAM · ${mapById(profile.selectedMap).name}</span></p></div>
+        <div class="menu-actions">${actionButton('play','GÖREVE BAŞLA','primary')}${actionButton('chase','BÜYÜK KAÇIŞ','primary')}${actionButton('backup','KAYIT YEDEĞİ')}${actionButton('missions','GÖREVLER')}${actionButton('fleet','DRONE GARAJI')}${actionButton('hangar','PARÇA YÜKSELTMELERİ')}${actionButton('controls','KONTROLLER')}${actionButton('settings','AYARLAR')}${actionButton('endless','SERBEST OYUN · SONSUZ ARENA','primary')}${actionButton('practice','TEST UÇUŞU')}${actionButton('maps','HARİTALAR')}${actionButton('records','REKORLAR')}${actionButton('training','UÇUŞ EĞİTİMİ')}</div>`;
+    } else if (activeView === 'missions') {
+      html = `<div class="eyebrow">HAREKÂT HARİTASI</div><h1>Görevler</h1><p>Görevleri sırayla aç. Bitirdiğin görevleri tekrar oynayabilirsin.</p>
+        <div class="menu-grid three">${MISSIONS.map(m => {
+          const locked = m.id > profile.unlockedMission, done = profile.completed[m.id], chosen = selectedMission === m.id;
+          return `<button class="menu-card ${chosen?'selected':''}" data-action="select" data-mission="${m.id}" ${locked?'disabled':''}>
+            <small>${locked?'KİLİTLİ':done?'TAMAMLANDI':'AÇIK'} · GÖREV ${m.id}</small><strong>${m.name}</strong>
+            <p>${TYPE_LABELS[m.kind]}<br>${missionDescription(m)}</p><span class="tag">${done?'★'.repeat(done.stars):m.boss?'LİDER DRONE':`${m.reward} kredi`}</span>
+          </button>`;
+        }).join('')}</div><div class="menu-actions">${actionButton('play',`${selectedMission}. GÖREVİ OYNA`,'primary')}${actionButton('maps',`HARİTA · ${mapById(profile.selectedMap).name}`)}${actionButton('home','ANA MENÜ')}</div>`;
+    } else if(activeView==='chase'){html=chasePanelHTML();
+    } else if(activeView==='endless'){html=endlessPanelHTML();
+    } else if(activeView==='endless-result'){html=endlessResultHTML();
+    } else if(activeView==='backup'){html=backupPanelHTML();
+    } else if(activeView==='practice'){html=practicePanelHTML();
+    } else if(activeView==='practice-result'){html=practiceResultHTML();
+    } else if(activeView==='maps'){html=mapsPanelHTML();
+    } else if(activeView==='records'){html=recordsPanelHTML();
+    } else if(activeView==='fleet'){html=fleetPanelHTML();
+    } else if(activeView==='customize'){html=customizePanelHTML();
+    } else if (activeView === 'hangar') {
+      html = `<div class="eyebrow">DRONE ATÖLYESİ</div><h1>Parça yükseltmeleri</h1><p>Parçalar sahip olduğun tüm dronelarda geçerlidir. Aşağıdaki değerler ${droneById(profile.selectedDrone).name} için gösterilir.</p>${statsHTML()}${droneStatsHTML()}<p class="garage-message" role="status">${upgradeMessage}</p>
+        <div class="menu-grid">${UPGRADES.map(up => {
+          const rank=profile.upgrades[up.id], cost=upgradePrice(up), enough=profile.credits>=cost && pilotLevel()>=rank+1;
+          return `<article class="menu-card owned"><small>SEVİYE ${rank} / ${UP_MAX}</small><strong>${up.name}</strong><p>${up.description}</p>${upgradeEffectHTML(up)}
+            ${rank===UP_MAX?'<span class="tag">AZAMİ SEVİYE</span>':actionButton(`buy-${up.id}`,`${cost} KREDİ · YÜKSELT`,'compact',enough?'':'disabled')}
+            ${rank<UP_MAX&&pilotLevel()<rank+1?`<small>GEREKLİ PİLOT SEVİYESİ: ${rank+1}</small>`:''}${rank<UP_MAX&&profile.credits<cost?`<small>EKSİK KREDİ: ${cost-profile.credits}</small>`:''}</article>`;
+        }).join('')}</div><div class="menu-actions">${actionButton('fleet','DRONE GARAJI','primary')}${actionButton('home','ANA MENÜ')}</div>`;
+    } else if (activeView === 'controls') {
+      html=`<div class="eyebrow">UÇUŞ KILAVUZU</div><h1>Kontroller</h1>
+        ${touchActive?phoneControlsHTML():`<dl class="control-list">${Object.keys(DEFAULT_KEYS).map(k=>`<dt>${keyLabel(profile.settings.bindings[k])}</dt><dd>${KEY_NAMES[k]}</dd>`).join('')}
+        <dt>Fare / parmak</dt><dd>Yatay hareketle dön; dikey hareketle yüksel veya alçal.</dd><dt>Sol tuş basılı</dt><dd>Seri atış · 36 mermi · ısınmaya dikkat et.</dd>
+        <dt>Şarjör</dt><dd>Boşken otomatik, doldurma tuşuyla istediğin zaman yenile. Yedek mermi sınırsız.</dd>
+        <dt>Füze uyarısı</dt><dd>Hız takviyesi kullanıp keskin dönüşle yaklaşan füzeden kaç.</dd><dt>Motor hasarı</dt><dd>Hasarlı motorlar itişi ve dengeyi azaltır. Motor durumunu üstteki göstergeden izle.</dd><dt>Tamir</dt><dd>Büyük Kaçış haritasındaki yeşil alanlarda yavaşla ve iniş yardımını aç. Tehdit yokken 4 saniyede tamir edilir.</dd><dt>Telefon</dt><dd>Joystick, irtifa, kamera, seri atış, doldurma, füze ve iniş düğmeleri.</dd></dl>`}
+
+        <div class="menu-actions">${actionButton('training','UÇUŞ EĞİTİMİ','primary')}${actionButton('home','ANA MENÜ')}</div>`;
+    } else if (activeView === 'settings') {
+      const q=profile.settings.quality, cfg=profile.settings;
+      html=`<div class="eyebrow">PİLOT KONSOLU</div><h1>Ayarlar</h1><p>Grafik, ses ve kontrol tercihlerin otomatik kaydedilir. Efekt yoğunluğu patlama, duman ve parçacık sayısını değiştirir.</p>
+      <div class="settings-section"><h2>Uçuş</h2><div class="menu-grid"><label class="menu-card setting-label">Zorluk<select data-setting="difficulty" aria-label="Oyun zorluğu">${Object.entries(DIFFICULTIES).map(([id,d])=>`<option value="${id}" ${cfg.difficulty===id?'selected':''}>${d.name}</option>`).join('')}</select><small>Sonraki uçuşta uygulanır. Düşman sayısı, isabeti ve hasarı değişir.</small></label><div class="menu-card"><small>KAMERA</small><strong>${cfg.camera==='fpv'?'FPV · Drone kamerası':'Dış takip kamerası'}</strong>${actionButton('camera','KAMERAYI DEĞİŞTİR','compact')}</div></div></div>
+      <div class="settings-section"><h2>Telefon kumandası</h2><div class="menu-grid"><label class="menu-card setting-label">Dokunmatik kontroller<select data-setting="touchControls" aria-label="Dokunmatik kontroller">${[['auto','Otomatik'],['on','Açık'],['off','Kapalı']].map(([id,label])=>`<option value="${id}" ${cfg.touchControls===id?'selected':''}>${label}</option>`).join('')}</select></label><label class="menu-card setting-label">Dokunma hassasiyeti <b>${cfg.touchSensitivity.toFixed(1)}×</b><input data-setting="touchSensitivity" aria-label="Dokunma hassasiyeti" type="range" min=".5" max="1.8" step=".1" value="${cfg.touchSensitivity}"></label></div><p class="touch-quality-note">Çubuk hareketini bırakınca drone yavaşlar. Ateş, çubuğun hareketinden bağımsızdır; basılı tuttuğun sürece çalışır.</p>${touchCustomizationSettings()}</div>
+      <div class="settings-section"><h2>Görüntü</h2>${touchActive?'<p class="touch-quality-note">Telefonda Otomatik kalite, gölgeleri kapatır ve çizim çözünürlüğünü sınırlar. Daha fazla ayrıntı için Yüksek’i seçebilirsin.</p>':''}<div class="menu-grid">
+      <div class="menu-card"><small>KALİTE ÖN AYARI</small><strong>${q==='auto'?'Otomatik':q==='low'?'Düşük':'Yüksek'}</strong>${actionButton('quality','ÖN AYARI DEĞİŞTİR','compact')}</div>
+      <div class="menu-card"><small>GÖLGE</small><strong>${renderer.shadowMap.enabled?'Açık':'Kapalı'}</strong>${actionButton('shadows','DEĞİŞTİR','compact')}</div>
+      <label class="menu-card setting-label">Çözünürlük <b>${Math.round(cfg.resolution*100)}%</b><input data-setting="resolution" aria-label="Görüntü çözünürlüğü" type="range" min=".6" max="1.5" step=".1" value="${cfg.resolution}"></label>
+      <div class="menu-card"><small>KAMERA SARSINTISI</small><strong>${cfg.cameraShake?'Açık':'Kapalı'}</strong>${actionButton('shake','DEĞİŞTİR','compact')}<small>Düşük efekt ayarında ve azaltılmış hareket tercihinde kapalıdır.</small></div>
+      <label class="menu-card setting-label">Efekt yoğunluğu<select data-setting="effects" aria-label="Efekt yoğunluğu">${['low','medium','high'].map((v,i)=>`<option value="${v}" ${cfg.effects===v?'selected':''}>${['Düşük','Orta','Yüksek'][i]}</option>`).join('')}</select></label>
+      </div>${actionButton('fullscreen',document.fullscreenElement?'TAM EKRANDAN ÇIK':'TAM EKRAN','compact')}</div>
+      <div class="settings-section"><h2>Ses</h2><div class="menu-grid"><div class="menu-card"><strong>${cfg.sound?'Sesler açık':'Sesler kapalı'}</strong>${actionButton('sound','SESİ DEĞİŞTİR','compact')}</div>
+      <label class="menu-card setting-label">Ses seviyesi <b>${Math.round(cfg.volume*100)}%</b><input data-setting="volume" aria-label="Ses seviyesi" type="range" min="0" max="1" step=".05" value="${cfg.volume}"></label></div></div>
+      <div class="settings-section"><h2>Kontrol</h2><div class="menu-grid"><label class="menu-card setting-label mouse-sensitivity">Fare hassasiyeti <b>${cfg.sensitivity.toFixed(1)}×</b><input data-setting="sensitivity" aria-label="Fare hassasiyeti" type="range" min=".4" max="2" step=".1" value="${cfg.sensitivity}"></label>
+      <div class="menu-card"><strong>Dikey yön: ${cfg.invertY?'Ters':'Normal'}</strong>${actionButton('invert','DİKEY YÖNÜ DEĞİŞTİR','compact')}</div></div>
+      <div class="keyboard-settings"><p class="binding-help">Bir tuşa tıkla, sonra yeni tuşa bas. Aynı tuş seçilirse iki kontrol yer değiştirir. Escape iptal eder.</p>
+      <div class="bindings">${Object.keys(DEFAULT_KEYS).map(k=>actionButton(`bind-${k}`,`${KEY_NAMES[k]} · ${rebinding===k?'BİR TUŞA BAS':keyLabel(cfg.bindings[k])}`,'compact')).join('')}</div>
+      ${actionButton('reset-keys','VARSAYILAN TUŞLAR','compact')}</div></div><p class="settings-message" role="status">${settingsMessage}</p>
+      <div class="menu-actions">${actionButton('settings-back',settingsReturn==='pause'?'MOLA EKRANI':'ANA MENÜ','primary')}</div>`;
+    } else if (activeView === 'pause') {
+      html = `<div class="eyebrow">${practiceActive?'TEST UÇUŞU':endlessActive?`SONSUZ ARENA · SEVİYE ${endlessLevel}`:`GÖREV ${mission.id}`} · ${mapById(missionMap).name}</div><h1>Oyun duraklatıldı</h1><p>${practiceActive?`${droneById(activeDroneId()).name} · ${practiceConfig.upgraded?'Mevcut parçalar':'Fabrika parçaları'}`:endlessActive?`Seviye ${endlessLevel} · ${Math.max(0,mission.goal-missionKills)} rakip kaldı · ${endlessSessionCredits} kredi kazanıldı`:`${mission.name} · ${missionDescription(mission)}`} · ${Math.ceil(hp)} can</p>
+        <div class="menu-actions">${actionButton('resume','OYUNA DÖN','primary')}${actionButton('settings','AYARLAR')}${actionButton('retry',practiceActive?'TESTİ YENİDEN BAŞLAT':endlessActive?'SONSUZ ARENAYI YENİDEN BAŞLAT':'GÖREVİ YENİDEN BAŞLAT')}${actionButton('leave',practiceActive?'TESTİ BİTİR / RAPOR':endlessActive?'SERBEST OYUNU BİTİR':'ANA MENÜYE DÖN','warning')}</div>`;
+    } else if (activeView === 'success' || activeView === 'defeat') {
+      const win=activeView==='success';
+      html = `<div class="eyebrow">GÖREV ${mission.id} · ${win?'TAMAMLANDI':'BAŞARISIZ'}</div>
+        <h1>${win?'Görev tamamlandı':'Görev başarısız'}</h1>
+        <p>${win?missionResult?.message:failureReason}</p>
+        <div class="stat-strip"><div class="stat-item"><b>${score}</b><small>PUAN</small></div><div class="stat-item"><b>${mission.kind==='race'?gateIndex:missionKills}</b><small>${mission.kind==='race'?'GEÇİLEN KAPI':'DÜŞÜRÜLEN'}</small></div>
