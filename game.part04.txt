@@ -1,0 +1,200 @@
+      hp=maxHP();motorHP.fill(100);boost=flightStats().boost;ammo=MAGAZINE;heat=0;overheated=false;reloadRemaining=0;missileCooldown=0;repairCount++;
+      padCooldowns[landingAssist]=45;landingAssist=-1;repairTimer=0;altitudeTarget=7;notify('Tamir tamamlandı · motorlar yenilendi · otomatik kalkış');sound(730,.25,.04);
+    }
+  }
+  function startChase(){
+    endlessActive=false;$('endlessHUD')?.classList.add('hidden');practiceActive=false;sessionDifficulty=profile.settings.difficulty;mission=CHASE_MISSION;missionMap='chase';chaseTimeLimit=difficulty().time;
+    applyMap('chase');reset();running=true;hidePanel();initAudio();last=performance.now();for(let i=0;i<Math.max(2,3+difficulty().count);i++)spawnEnemy();
+    ui.missionStrip.classList.remove('hidden');notify('Büyük Kaçış · 4 kontrol noktasını geç, sonra çıkışa ulaş.');return true;
+  }
+  function completeChase(){
+    if(!running)return;running=false;clearInputs();pendingMissile=false;landingAssist=-1;
+    const first=profile.chaseWins===0,credits=first?320:145,xp=260+missionKills*12,stars=1+Number(hp>=maxHP()*.6)+Number(missionTime<chaseTimeLimit*.65),oldRank=pilotLevel();
+    score+=1000+Math.max(0,Math.floor(chaseTimeLimit-missionTime))*5;profile.credits+=credits;profile.xp+=xp;profile.chaseWins++;profile.bestScore=Math.max(profile.bestScore,score);
+    missionResult={credits,xp,stars,rankUp:pilotLevel()>oldRank,message:`Çıkışa ulaştın. ${missionKills} takipçi düşürüldü; ${repairCount} kez tamir yapıldı.`};storeMissionReport(true);showPanel('success');
+  }
+  function updateChase(dt){
+    const target=chaseCheckpoint<CHASE_POINTS.length?CHASE_POINTS[chaseCheckpoint]:EXTRACTION;
+    if(player.position.distanceTo(target)<19){
+      if(chaseCheckpoint<CHASE_POINTS.length){chaseBeacons[chaseCheckpoint].visible=false;chaseCheckpoint++;score+=350;sound(830,.16,.05);notify(chaseCheckpoint===4?'Bütün noktalar geçildi · yeşil çıkışa ulaş':`Kontrol noktası ${chaseCheckpoint} / 4 · takip artıyor`);}
+      else{completeChase();return;}
+    }
+    if(missionTime>=chaseTimeLimit)endGame('Kaçış süresi doldu. Hız takviyesi kullanarak kontrol noktalarını sırayla geç.');
+  }
+  function updatePursuers(dt){
+    spawnClock-=dt;if(spawnClock<=0)spawnClock=spawnEnemy()?Math.max(3.5,8-threatLevel()*.6)*difficulty().interval:1;
+    for(const e of foes){
+      if(e.dead)continue;animateRotors(e.mesh,dt);const previous=e.mesh.position.clone();
+      const distance=e.mesh.position.distanceTo(player.position),visible=distance<220&&!lineBlocked(e.mesh.position,player.position);
+      if(visible){e.lastSeen.copy(player.position).addScaledVector(velocity,.35);e.unseen=0;}else e.unseen+=dt;
+      if(e.unseen>18&&distance>150){e.dead=true;continue;}
+      const desired=e.lastSeen.clone();if(!visible&&e.unseen>5)desired.add(V(Math.sin(clock*.6+e.phase)*23,5,Math.cos(clock*.6+e.phase)*23));
+      if(visible&&distance<24)desired.add(V(Math.sin(e.phase+clock*.35)*22,3,Math.cos(e.phase+clock*.35)*22));
+      desired.y=clamp(desired.y+5,-1,flightCeiling()-5);
+      const ahead=firstObstacle(e.mesh.position,desired,3);if(ahead){desired.y=Math.min(flightCeiling()-4,Math.max(desired.y,ahead.box.max.y+6));}
+      const direction=desired.sub(e.mesh.position),speed=(flightStats().speed*.75+threatLevel()*1.0)*difficulty().pursuit;
+      if(direction.length()>2)direction.normalize().multiplyScalar(speed);updateEnemyEvasion(e,dt);if(e.evadeRemaining>0)direction.copy(e.evadeDirection).multiplyScalar(e.evadeSpeed);e.velocity.lerp(direction,1-Math.exp(-(e.evadeRemaining>0?9:2.2)*dt));e.mesh.position.addScaledVector(e.velocity,dt);avoidEnemyObstacle(e,previous);
+      for(const other of foes)if(other!==e&&!other.dead){const push=e.mesh.position.clone().sub(other.mesh.position),d=push.length();if(d>0&&d<5)e.mesh.position.addScaledVector(push,(5-d)*dt/d*3);}
+      const look=player.position.clone().sub(e.mesh.position).normalize();e.mesh.quaternion.slerp(new T.Quaternion().setFromUnitVectors(FORWARD,look),1-Math.exp(-3*dt));
+      e.mesh.position.x=clamp(e.mesh.position.x,-555,555);e.mesh.position.z=clamp(e.mesh.position.z,-555,555);e.mesh.position.y=clamp(e.mesh.position.y,1,flightCeiling()-2);updateEnemyPresentation(e,dt);
+      e.fire-=dt;if(e.fire<=0&&e.evadeRemaining<=0&&visible&&distance<115){emitBullet(e);e.fire=(3.8+rand(0,1.7))*difficulty().interval;}
+      e.missileTimer-=dt;if(e.type==='armored'&&e.evadeRemaining<=0&&e.missileTimer<=0&&visible&&distance<100){if(launchEnemyMissile(e))e.missileTimer=22;}
+    }
+  }
+  function flightSystemsHUD(){
+    const weakest=Math.round(Math.min(...motorHP));$('motorState').textContent=`MOTOR ${weakest}%`; $('motorState').classList.toggle('damaged',weakest<60);
+    $('motorState').title=`Motorlar: ${motorHP.map(v=>Math.round(v)+'%').join(' / ')} · Güç ${Math.round(motorPower()*100)}%`;
+    $('cameraButton').textContent=`${touchActive?'':keyLabel(profile.settings.bindings.camera)+' · '}${profile.settings.camera==='fpv'?'FPV':'DIŞ'}`;
+    $('serviceHUD').classList.toggle('hidden',!isChase());document.body.classList.toggle('fpv-flight',running&&profile.settings.camera==='fpv');
+    if(!isChase())return;
+    const {index,distance}=nearestPad(),active=landingAssist>=0,station=active?landingAssist:index;
+    $('serviceTitle').textContent=`TAMİR ${station+1} · ${Math.round(distance)} m`;
+    $('serviceStatus').textContent=active?(repairTimer>0?`TAMİR ${repairTimer.toFixed(1)} / 4 sn`:padCooldowns[station]>0?`ALAN DİNLENİYOR · ${Math.ceil(padCooldowns[station])} sn`:padThreatened(station)?'TAKİPÇİ YAKIN · ALANI TEMİZLE':'İNİŞ YARDIMI · ALÇALIYOR'):distance<=32?'Yavaşla, ardından iniş yardımını aç.':'Radarın yeşil halkası en yakın tamir alanı.';
+    $('serviceProgress').style.width=`${repairTimer/4*100}%`;
+    $('serviceButton').textContent=active?'İNİŞİ İPTAL ET':`${touchActive?'':keyLabel(profile.settings.bindings.land)+' · '}İN / TAMİR`;
+    $('serviceButton').disabled=!active&&distance>32;
+  }
+
+  const STOCK_UPGRADES=Object.freeze({hull:0,weapon:0,motor:0,missile:0});
+  const PRACTICE_MISSION=Object.freeze({id:0,name:'Test Uçuşu',kind:'practice',goal:0,maxEnemies:3,spawnInterval:1.7,reward:0,xp:0,boss:false});
+  const ENDLESS_MISSION_BASE=Object.freeze({name:'Sonsuz Arena',kind:'endless',reward:0,xp:0,duration:0,gates:0});
+  let practiceActive=false,practiceConfig={droneId:'pioneer',upgraded:true,moving:true,map:'base'},missionMap='base',recordMap='base';
+  let endlessActive=false,endlessLevel=1,endlessSpawned=0,endlessIntermission=0,endlessWaveReward=0,endlessSessionCredits=0,endlessBest=1;
+  try{endlessBest=Math.max(1,Number(localStorage.getItem('droneArenaEndlessBest'))||1)}catch(_){}
+  const endlessWaveSize=level=>Math.min(18,5+Math.floor((level-1)*1.15));
+  const endlessBossWave=level=>level%5===0;
+  const endlessHealthScale=level=>1+Math.min(2.8,(level-1)*.13);
+  const endlessSpeedScale=level=>1+Math.min(.75,(level-1)*.028);
+  const endlessFireScale=level=>Math.max(.48,1-(level-1)*.025);
+  const endlessDamageScale=level=>1+Math.min(2.2,(level-1)*.10);
+  const endlessAccuracyScale=level=>Math.max(.28,1-(level-1)*.035);
+  const endlessDodgeScale=level=>1+Math.min(.65,(level-1)*.025);
+  const endlessConcurrentLimit=()=>Math.max(2,Math.min(touchActive?7:9,3+Math.floor((endlessLevel-1)/2)+difficulty().count));
+  const endlessDifficultyPercent=()=>Math.round(endlessHealthScale(endlessLevel)*endlessDamageScale(endlessLevel)*100);
+  function endlessMissionFor(level){return {...ENDLESS_MISSION_BASE,id:level,goal:endlessWaveSize(level),maxEnemies:endlessConcurrentLimit(),spawnInterval:Math.max(.8,2.7-level*.055),boss:endlessBossWave(level)};}
+
+  let sessionReport=null,practiceHistory=[];
+  const freshCombatLog=()=>({primaryHits:0,missileHits:0,damageTaken:0,damageDealt:0,topSpeed:0,currentSpeed:0,lastHit:0});
+  let combatLog=freshCombatLog();
+  const activeDroneId=()=>practiceActive?practiceConfig.droneId:profile.selectedDrone;
+  const activeUpgrades=()=>practiceActive&&!practiceConfig.upgraded?STOCK_UPGRADES:profile.upgrades;
+  const formatDuration=seconds=>`${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}.${Math.floor(seconds*10)%10}`;
+  const percentText=value=>value===null?'—':`${value.toFixed(1)}%`;
+
+  const PAINT_COLORS=[
+    ['#101519','Gece siyahı'],['#192126','Karbon siyahı'],['#242d33','Koyu grafit'],['#303b43','Kurşun'],
+    ['#293240','Siyah çelik'],['#37454b','Silah metali'],['#3b4145','Bazalt'],['#4d575d','Antrasit'],
+    ['#192821','Koyu orman'],['#263b2b','Çam yeşili'],['#36442b','Askerî yeşil'],['#3e4225','Koyu zeytin'],
+    ['#464331','Haki'],['#554532','Toprak'],['#46332b','Koyu bakır'],['#514334','Koyu kum'],
+    ['#0e2338','Gece mavisi'],['#143654','Lacivert'],['#1b4255','Petrol mavisi'],['#164742','Koyu turkuaz'],
+    ['#265346','Zümrüt'],['#3c294e','Gece moru'],['#4b2850','Mürdüm'],['#542733','Bordo'],
+    ['#682c27','Koyu kırmızı'],['#743b2a','Pas kırmızısı'],['#6c4b25','Koyu bronz'],['#5c5425','Eskitme altın'],
+    ['#25344c','Fırtına mavisi'],['#344367','İndigo'],['#413458','Patlıcan moru'],['#582e37','Vişne']
+  ];
+  const LED_COLORS=[['#8ee0c2','Yeşil'],['#64c8ff','Mavi'],['#ffc860','Sarı'],['#f56d66','Kırmızı']];
+  const FINISHES={factory:'Fabrika',solid:'Tek renk',metallic:'Metalik',matte:'Mat'};
+  const droneById=id=>DRONES.find(d=>d.id===id)||DRONES[0];
+  const defaultPaint=id=>({color:droneById(id).color,finish:'factory',blades:2,led:'#8ee0c2'});
+  const cleanPaint=(id,value={})=>({
+    color:typeof value?.color==='string'&&/^#[0-9a-f]{6}$/i.test(value.color)?value.color.toLowerCase():droneById(id).color,
+    finish:Object.hasOwn(FINISHES,value?.finish)?value.finish:'factory',blades:value?.blades===3?3:2,
+    led:LED_COLORS.some(c=>c[0]===value?.led)?value.led:'#8ee0c2'
+  });
+  function flightStats(id=activeDroneId(),upgrades=activeUpgrades()){
+    const d=droneById(id);
+    return {hp:d.hp+upgrades.hull*20,damage:d.damage+upgrades.weapon,speed:d.speed+upgrades.motor*1.8,
+      fast:d.fast+upgrades.motor*2.8,boost:d.boost+upgrades.motor*8,
+      missile:d.missile+upgrades.missile*4,reload:Math.max(4.5,d.reload-upgrades.missile*.7),lock:Math.max(.34,d.lock-upgrades.missile*.06)};
+  }
+  const ownsDrone=id=>profile.ownedDrones.includes(id);
+  const dronePaint=id=>cleanPaint(id,profile.paintJobs[id]);
+  const rating=id=>{const v=flightStats(id);return Math.round(v.hp*.42+v.damage*27+v.speed*3+v.missile*3+(10-v.reload)*7)};
+  const numberText=n=>Number.isInteger(n)?String(n):n.toFixed(2).replace(/0$/,'');
+  let garageModel='pioneer',fleetFilter='all',fleetOwned=false,fleetSort='default',garageMessage='',upgradeMessage='';
+  let garageRenderer=null,garageScene=null,garageCamera=null,previewDrone=null,previewAngle=.65,previewTilt=.30,previewDistance=8.8,previewPointer=null,previewLastX=0,previewLastY=0,previewIdle=0,previewSize='';
+  const thumbnailCache=new Map();
+  const DEFAULT_KEYS={forward:'KeyW',backward:'KeyS',left:'KeyA',right:'KeyD',boost:'ShiftLeft',missile:'KeyR',reload:'KeyE',pause:'KeyP',camera:'KeyC',land:'KeyF'};
+  const KEY_NAMES={forward:'İleri',backward:'Geri',left:'Sola dön',right:'Sağa dön',boost:'Hız takviyesi',missile:'Füze',reload:'Doldur',pause:'Duraklat',camera:'Kamera değiştir',land:'İniş / tamir'};
+  const keyLabel=code=>code.replace('Key','').replace('Digit','').replace('ShiftLeft','Shift').replace('ShiftRight','Sağ Shift').replace('ArrowUp','↑').replace('ArrowDown','↓').replace('ArrowLeft','←').replace('ArrowRight','→').replace('Space','Boşluk');
+  const TYPE_LABELS={combat:'Hedef avı',defend:'Üs savunma',escort:'Konvoy koruma',race:'Zaman yarışı',boss:'Lider avı',chase:'Kovalamaca'};
+  const missionDescription=m=>m.kind==='chase'?'4 kontrol noktasını geç ve çıkışa ulaş':m.kind==='defend'?`${m.duration} saniye üssü savun`:m.kind==='escort'?`Konvoyu ${m.duration} saniye koru`:m.kind==='race'?`${m.gates} kapıdan ${m.duration} saniyede geç`:`${m.goal} hedefi etkisiz hâle getir`;
+  let rebinding=null,settingsReturn='home',settingsMessage='';
+  const MISSION_NAMES = ['İlk Sorti','İleri Karakol','Alçak İrtifa','Lider: Şahin',
+    'Konvoy Rotası','Keskin Dönüş','Bölge Savunması','Lider: Kartal',
+    'Kritik Sevkiyat','Son Geçit','Yüksek İrtifa','Lider: Fırtına'];
+  const MISSIONS = MISSION_NAMES.map((name, i) => ({
+    id: i + 1, name, goal: 6 + i * 2, maxEnemies: Math.min(8, 4 + Math.floor(i / 2)),
+    spawnInterval: Math.max(1.9, 5.1 - i * .23), reward: 120 + i * 48,
+    xp: 130 + i * 54, boss: (i + 1) % 4 === 0,
+    kind:['combat','defend','race','boss','escort','race','defend','boss','escort','combat','race','boss'][i],
+    duration:[0,60,95,0,80,88,90,0,105,0,100,0][i],gates:i===2?6:i===5?8:10
+  }));
+  const UPGRADES = [
+    {id:'hull',name:'Gövde Zırhı',description:'Her seviyede +20 azami can.',base:130,step:105},
+    {id:'weapon',name:'Normal Atış',description:'Her seviyede mermi hasarı +1.',base:150,step:125},
+    {id:'motor',name:'Motor Gücü',description:'İleri hız ve takviye kapasitesi artar.',base:140,step:110},
+    {id:'missile',name:'Füze Sistemi',description:'Kilit süresi ve yeniden dolum azalır.',base:170,step:135}
+  ];
+  const UP_MAX = 5;
+  const defaultProfile = () => ({credits:0,xp:0,unlockedMission:1,completed:{},
+    upgrades:{hull:0,weapon:0,motor:0,missile:0},ownedDrones:['pioneer'],selectedDrone:'pioneer',paintJobs:{},bestScore:0,tutorialDone:false,chaseWins:0,selectedMap:'base',records:{},settings:{touchLayout:defaultTouchCustomization(),touchControls:'auto',touchSensitivity:1,camera:'follow',cameraShake:true,difficulty:'normal',sound:true,volume:.65,quality:'auto',shadows:true,resolution:1,effects:'medium',sensitivity:1,invertY:false,bindings:{...DEFAULT_KEYS}}});
+  let storageWorks = true;
+  function cleanProfile(raw) {
+    const fallback = defaultProfile();
+    try {
+      if(!raw||typeof raw!=='object'||Array.isArray(raw))return fallback;
+      const valid = (n, max) => Number.isFinite(n) ? Math.floor(clamp(n, 0, max)) : 0;
+      fallback.credits = valid(raw.credits, 9999999); fallback.xp = valid(raw.xp, 9999999);
+      fallback.unlockedMission = clamp(valid(raw.unlockedMission, MISSIONS.length) || 1, 1, MISSIONS.length);
+      fallback.bestScore = valid(raw.bestScore, 9999999);
+      for (const upgrade of UPGRADES) fallback.upgrades[upgrade.id] = valid(raw.upgrades?.[upgrade.id], UP_MAX);
+      for (const mission of MISSIONS) {
+        const saved = raw.completed?.[mission.id];
+        if (saved && typeof saved === 'object') fallback.completed[mission.id] =
+          {stars:valid(saved.stars,3),score:valid(saved.score,9999999)};
+      }
+      fallback.ownedDrones=[...new Set(['pioneer',...(Array.isArray(raw.ownedDrones)?raw.ownedDrones.filter(id=>DRONES.some(d=>d.id===id)):[])])];
+      fallback.selectedDrone=fallback.ownedDrones.includes(raw.selectedDrone)?raw.selectedDrone:'pioneer';
+      for(const id of fallback.ownedDrones)fallback.paintJobs[id]=cleanPaint(id,raw.paintJobs?.[id]);
+      fallback.tutorialDone=raw.tutorialDone===true;
+      fallback.chaseWins=valid(raw.chaseWins,9999999);
+      fallback.selectedMap=MAPS.some(m=>m.id===raw.selectedMap&&!m.chaseOnly)?raw.selectedMap:'base';
+      const bounded=(v,max)=>Number.isFinite(v)&&v>=0?Math.min(v,max):null;
+      for(const map of MAPS)for(const m of recordMissions(map.id))for(const level of Object.keys(DIFFICULTIES)){
+        const key=recordKey(map.id,m.id,level),r=raw.records?.[key];if(!r||typeof r!=='object')continue;
+        const attempts=valid(r.attempts,9999999),wins=Math.min(attempts,valid(r.wins,9999999));
+        fallback.records[key]={attempts,wins,bestScore:wins?valid(r.bestScore,9999999):0,
+          bestTime:wins?bounded(r.bestTime,864000):null,bestAccuracy:wins?bounded(r.bestAccuracy,100):null,leastDamage:wins?bounded(r.leastDamage,9999999):null};
+      }
+      const settings=raw.settings||{};fallback.settings.touchLayout=cleanTouchCustomization(settings.touchLayout);
+      fallback.settings.touchControls=['auto','on','off'].includes(settings.touchControls)?settings.touchControls:'auto';fallback.settings.touchSensitivity=Number.isFinite(settings.touchSensitivity)?clamp(settings.touchSensitivity,.5,1.8):1;
+      fallback.settings.camera=settings.camera==='fpv'?'fpv':'follow';fallback.settings.difficulty=Object.hasOwn(DIFFICULTIES,settings.difficulty)?settings.difficulty:'normal';
+      fallback.settings.volume=Number.isFinite(settings.volume)?clamp(settings.volume,0,1):.65;
+      fallback.settings.shadows=settings.shadows!==false;fallback.settings.cameraShake=settings.cameraShake!==false;
+      fallback.settings.resolution=Number.isFinite(settings.resolution)?clamp(settings.resolution,.6,1.5):1;
+      fallback.settings.effects=['low','medium','high'].includes(settings.effects)?settings.effects:'medium';
+      fallback.settings.sensitivity=Number.isFinite(settings.sensitivity)?clamp(settings.sensitivity,.4,2):1;
+      fallback.settings.invertY=settings.invertY===true;
+      const bindings={},used=new Set(),validKey=v=>typeof v==='string'&&/^(Key[A-Z]|Digit[0-9]|Arrow(Up|Down|Left|Right)|Shift(Left|Right)|Space)$/.test(v);
+      for(const k of Object.keys(DEFAULT_KEYS)){const v=settings.bindings?.[k];if(validKey(v)&&!used.has(v)){bindings[k]=v;used.add(v);}}
+      for(const k of Object.keys(DEFAULT_KEYS))if(!bindings[k]){const v=[DEFAULT_KEYS[k],'KeyV','KeyB','KeyN','KeyM','KeyJ','KeyK','KeyL','KeyQ','KeyX','KeyZ'].find(v=>!used.has(v));bindings[k]=v;used.add(v);}
+      fallback.settings.bindings=bindings;
+      fallback.settings.sound = raw.settings?.sound !== false;
+      fallback.settings.quality = ['auto','low','high'].includes(raw.settings?.quality) ? raw.settings.quality : 'auto';
+    } catch (_) {}
+    return fallback;
+  }
+  function loadProfile(){try{return cleanProfile(JSON.parse(localStorage.getItem(SAVE_KEY)||'{}'));}catch(_){storageWorks=false;return defaultProfile();}}
+  let profile = loadProfile(), selectedMission = profile.unlockedMission, activeView = 'home', missionResult = null;
+  const pilotLevel = () => Math.min(30, 1 + Math.floor(Math.sqrt(Math.max(0,profile.xp) / 160)));
+  const rankStart = level => (level - 1) ** 2 * 160;
+  const rankEnd = level => level ** 2 * 160;
+  const upgradePrice = up => up.base + (profile.upgrades[up.id] || 0) * up.step;
+  function saveProfile() {
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(profile)); storageWorks = true; }
+    catch (_) { storageWorks = false; }
+    $('saveState').textContent = storageWorks ? 'İLERLEME BU TARAYICIDA SAKLANIR' : 'KAYIT KAPALI · BU OTURUMDA OYNANIR';
+  }
+  function statsHTML() {
+    const level = pilotLevel(), end = rankEnd(level);
+    const progress = level >= 30 ? 100 : clamp((profile.xp - rankStart(level)) / (end - rankStart(level)) * 100, 0, 100);
