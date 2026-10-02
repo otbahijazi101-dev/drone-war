@@ -1,1 +1,72 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Drone War</title><style>html,body{margin:0;width:100%;height:100%;background:#06111d;color:#fff;font-family:system-ui}#boot{position:fixed;inset:0;display:grid;place-items:center;text-align:center;background:#06111d}.spin{width:40px;height:40px;border:4px solid #ffffff22;border-top-color:#fff;border-radius:50%;animation:s .8s linear infinite;margin:auto auto 14px}@keyframes s{to{transform:rotate(360deg)}}</style></head><body><div id="boot"><div><div class="spin"></div>Drone War yükleniyor…</div></div><script>(async()=>{try{let html='';for(let i=1;i<=7;i++)html+=await(await fetch(`game.part${i}.txt`,{cache:'no-store'})).text();document.open();document.write(html);document.close()}catch(e){document.getElementById('boot').innerHTML='<div>Oyun yüklenemedi.<br><small>'+String(e)+'</small></div>'}})();</script></body></html>
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#07111f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Drone War">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon.svg">
+<title>Drone War</title>
+<style>
+html,body{margin:0;width:100%;height:100%;min-height:100%;background:#06111d;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;overflow:hidden}
+body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);box-sizing:border-box}
+#boot{position:fixed;inset:0;display:grid;place-items:center;text-align:center;background:#06111d;padding:24px}
+.spin{width:40px;height:40px;border:4px solid #ffffff22;border-top-color:#fff;border-radius:50%;animation:s .8s linear infinite;margin:0 auto 14px}
+#bootStatus{font-size:12px;color:#a9bdc8;margin-top:8px;max-width:320px;line-height:1.45}
+@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="boot"><div><div class="spin"></div><strong>Drone War yükleniyor…</strong><div id="bootStatus">Oyun hazırlanıyor.</div></div></div>
+<script>
+(function(){
+  var status=document.getElementById('bootStatus');
+  var parts=['game.part1.txt','game.part2.txt','game.part3.txt','game.part4.txt','game.part5.txt','game.part6.txt','game.part7.txt'];
+
+  function setStatus(text){if(status)status.textContent=text;}
+
+  function loadGame(){
+    setStatus(navigator.onLine===false?'Çevrimdışı kayıt açılıyor…':'Oyun dosyaları açılıyor…');
+    return Promise.all(parts.map(function(path){
+      return fetch('/'+path).then(function(response){
+        if(!response.ok)throw new Error(path+' yüklenemedi ('+response.status+')');
+        return response.text();
+      });
+    })).then(function(chunks){
+      var html=chunks.join('');
+      document.open();
+      document.write(html);
+      document.close();
+    });
+  }
+
+  function fail(error){
+    var boot=document.getElementById('boot');
+    if(boot)boot.innerHTML='<div><strong>Oyun açılamadı.</strong><div id="bootStatus">'+String(error && error.message ? error.message : error)+'</div><p style="font-size:12px;color:#a9bdc8">İlk açılışta internet bağlantısı gerekir. Bir kez tamamen açıldıktan sonra çevrimdışı oynayabilirsin.</p></div>';
+  }
+
+  if('serviceWorker' in navigator && location.protocol==='https:'){
+    setStatus('Çevrimdışı kullanım hazırlanıyor…');
+    navigator.serviceWorker.register('/sw.js').then(function(){
+      return navigator.serviceWorker.ready;
+    }).then(function(){
+      setStatus('Çevrimdışı kullanım hazır.');
+      return loadGame();
+    }).catch(function(error){
+      setStatus('Offline kurulum atlandı; oyun normal açılıyor.');
+      return loadGame().catch(function(loadError){throw loadError || error;});
+    }).catch(fail);
+  }else{
+    setStatus('Bu tarayıcıda offline kurulum desteklenmiyor.');
+    loadGame().catch(fail);
+  }
+})();
+</script>
+</body>
+</html>
