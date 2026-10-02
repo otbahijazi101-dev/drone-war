@@ -1,0 +1,200 @@
+      reloadRemaining=Math.max(0,reloadRemaining-dt);
+      if(reloadRemaining===0){ammo=MAGAZINE;flightLog.reloads++;noiseSound('reload');}
+    }
+    if(primaryHeld&&primaryCooldown<=0)requestPrimaryShot();
+  }
+  function indicatorAngle(source){
+    const d=source.clone().sub(player.position);
+    const right=d.x*Math.cos(yaw)-d.z*Math.sin(yaw),back=d.x*Math.sin(yaw)+d.z*Math.cos(yaw);
+    return Math.atan2(right,-back)*180/Math.PI;
+  }
+  function launchEnemyMissile(enemy){
+    if(enemyMissiles.length>=2||!running||tutorialActive||practiceActive)return false;
+    const m=createMissile(true),direction=player.position.clone().sub(enemy.mesh.position).normalize();
+    m.position.copy(enemy.mesh.position).addScaledVector(direction,3);m.quaternion.setFromUnitVectors(FORWARD,direction);scene.add(m);
+    enemyMissiles.push({mesh:m,direction,speed:23,life:7.5,smoke:0});noiseSound('missile',.5);return true;
+  }
+  function updateEnemyMissiles(dt){
+    for(const m of enemyMissiles){
+      const desired=player.position.clone().sub(m.mesh.position).normalize();
+      m.direction.lerp(desired,1-Math.exp(-(velocity.length()>26?.75:1.25)*dt)).normalize();
+      m.speed=Math.min(38,m.speed+7*dt);const previous=m.mesh.position.clone();
+      m.mesh.position.addScaledVector(m.direction,m.speed*dt);m.mesh.quaternion.setFromUnitVectors(FORWARD,m.direction);m.life-=dt;m.smoke-=dt;
+      if(m.smoke<=0){m.smoke=.09;particle(m.mesh.position,0x444441,.48,.8,V(0,1,0),'smoke');}
+      const blocked=firstObstacle(previous,m.mesh.position,.25);if(blocked){m.mesh.position.copy(previous).lerp(m.mesh.position,Math.max(0,blocked.t-.01));explosion(m.mesh.position,.9);m.life=0;}
+      else if(segmentDistanceSq(previous,m.mesh.position,player.position)<5){
+        explosion(m.mesh.position,1.15);damagePlayer(22*difficulty().damage,previous);m.life=0;
+      }
+      if(m.mesh.position.y< -7)m.life=0;
+    }
+    enemyMissiles=enemyMissiles.filter(m=>{if(m.life>0)return true;disposeObject(m.mesh);return false;});
+    warningBeep-=dt;
+    if(enemyMissiles.length&&warningBeep<=0){sound(980,.10,.055);warningBeep=.65;}
+  }
+  function updateCombatHUD(dt){
+    damageFlash=Math.max(0,damageFlash-dt*1.9);damageDirectionTime=Math.max(0,damageDirectionTime-dt);hitTime=Math.max(0,hitTime-dt);
+    $('damageFlash').style.opacity=damageFlash;
+    $('damageDirection').classList.toggle('hidden',damageDirectionTime<=0);
+    $('damageDirection').style.transform=`translate(-50%,-50%) rotate(${damageAngle}deg)`;
+    $('hitMarker').classList.toggle('hidden',hitTime<=0);
+    $('primaryLabel').textContent=touchActive?'ATEŞ':'NORMAL ATIŞ';$('missileCaptionText').textContent=touchActive?'FÜZE':'ÖZEL FÜZE';
+    $('ammoCount').textContent=touchActive?String(ammo):`${ammo} / ${MAGAZINE}`;
+    $('weaponState').textContent=reloadRemaining>0?`DOLDURULUYOR ${reloadRemaining.toFixed(1)} sn`:overheated?'AŞIRI ISI · SOĞUYOR':touchActive?'BASILI TUT + SÜRÜKLE':'BASILI TUT · SERİ ATIŞ';
+    $('heatBar').style.width=`${heat}%`;$('heatBar').classList.toggle('hot',heat>75);
+    $('heatValue').textContent=overheated?'SOĞUTMA':`${Math.round(heat)}%`;
+    $('reloadBar').style.width=reloadRemaining>0?`${(1-reloadRemaining/2.2)*100}%`:'0%';
+    $('reloadButton').textContent=touchActive?(reloadRemaining>0?`DOLUM ${reloadRemaining.toFixed(1)}`:'DOLDUR'):`${keyLabel(profile.settings.bindings.reload)} · DOLDUR`;
+    $('touchBoostValue').textContent=`${Math.round(boost/flightStats().boost*100)}%`;
+    $('reloadButton').disabled=reloadRemaining>0||ammo===MAGAZINE;
+    $('missileKey').textContent=keyLabel(profile.settings.bindings.missile);
+    const binds=profile.settings.bindings;
+    $('flightHelp').textContent=`${keyLabel(binds.forward)}/${keyLabel(binds.backward)} uçuş · ${keyLabel(binds.left)}/${keyLabel(binds.right)} dönüş · Sol tuş basılı: ateş · ${keyLabel(binds.reload)} doldur · ${keyLabel(binds.missile)} füze · ${keyLabel(binds.boost)} hız · ${keyLabel(binds.pause)} mola`;
+    $('pauseButton').title=`Oyunu duraklat (${keyLabel(binds.pause)})`;
+    $('threatWarning').classList.toggle('hidden',!enemyMissiles.length);
+    if(enemyMissiles.length){
+      let nearest=enemyMissiles[0];for(const m of enemyMissiles)if(m.mesh.position.distanceToSquared(player.position)<nearest.mesh.position.distanceToSquared(player.position))nearest=m;
+      $('threatArrow').style.transform=`rotate(${indicatorAngle(nearest.mesh.position)}deg)`;
+      $('threatText').textContent=`FÜZE · ${Math.round(nearest.mesh.position.distanceTo(player.position))} m · ${touchLabel('boost','TAKVİYE')} + DÖNÜŞ`;
+    }
+    $('objectiveDetail').textContent=!mission?'':practiceActive?`TEST · ${missionKills} HEDEF · ${formatDuration(missionTime)} · ${mapById(missionMap).name}`:isChase()?`KOVALAMACA ${threatLevel()}/5 · NOKTA ${chaseCheckpoint}/4 · ${Math.max(0,Math.ceil(chaseTimeLimit-missionTime))} sn`:mission.kind==='race'?`SÜRE ${Math.max(0,Math.ceil(mission.duration-missionTime))} sn · KAPI ${gateIndex}/${mission.gates}`:
+      missionAsset?`${mission.kind==='defend'?'ÜS':'KONVOY'} CANI ${Math.ceil(missionAsset.hp/missionAsset.maxHP*100)}% · ${Math.max(0,Math.ceil(mission.duration-missionTime))} sn`:
+      `${missionKills}/${mission.goal} HEDEF · ${Math.floor(missionTime/60)}:${String(Math.floor(missionTime%60)).padStart(2,'0')}`;
+    flightSystemsHUD();
+    $('practiceHUD').classList.toggle('hidden',!practiceActive);
+    if(practiceActive){
+      $('practiceLoadout').textContent=`${droneById(activeDroneId()).name} · ${practiceConfig.upgraded?'MEVCUT PARÇALAR':'FABRİKA'}`;
+      $('practiceTelemetry').textContent=`Hız ${combatLog.currentSpeed.toFixed(1)} m/sn · Mermi ${flightStats().damage} · Son isabet ${numberText(combatLog.lastHit)}`;
+    }
+    const gate=raceGates[gateIndex],waypoint=isChase()?(CHASE_POINTS[chaseCheckpoint]||EXTRACTION):mission?.kind==='race'?gate?.position:missionAsset?.mesh.position;
+    $('waypoint').classList.toggle('hidden',!waypoint);
+    if(waypoint){
+      const p=waypoint.clone().project(camera);const inFront=waypoint.clone().sub(camera.position).dot(camera.getWorldDirection(V()))>0;
+      $('waypoint').style.left=`${clamp((p.x+1)*50,8,92)}%`;$('waypoint').style.top=`${clamp((1-p.y)*50,22,75)}%`;
+      $('waypoint').textContent=`${inFront?'◇':'↶'} ${isChase()?(chaseCheckpoint<4?`NOKTA ${chaseCheckpoint+1}`:'ÇIKIŞ'):mission.kind==='race'?`KAPI ${gateIndex+1}`:mission.kind==='defend'?'ÜS':'KONVOY'} · ${Math.round(waypoint.distanceTo(player.position))} m`;
+    }
+  }
+
+  function reset() {
+    clearInputs(); clearEffects(); foes.forEach(e => disposeObject(e.mesh)); foes = [];
+    ammo=MAGAZINE;heat=0;overheated=false;reloadRemaining=0;damageFlash=damageDirectionTime=hitTime=warningBeep=0;tutorialActive=false;
+    failureReason='Drone düşürüldü. Görevi yeniden deneyebilir veya hangarda zırhı geliştirebilirsin.';combatLog=freshCombatLog();sessionReport=null;
+    $('tutorialCard').classList.add('hidden');
+    flightLog={distance:0,turn:0,height:0,shots:0,reloads:0,missiles:0};
+    if (player) disposeObject(player);
+    player = makeDrone(); player.position.set(0,isChase()?14:8,isChase()?400:35);scene.add(player);motorHP=Array(player.userData.rotors.length).fill(100);collisionCooldown=0;collisionCount=0;landingAssist=-1;repairTimer=0;repairCount=0;padCooldowns=[0,0,0];chaseCheckpoint=0;
+    score = missionKills = 0; hp = maxHP(); boost = flightStats().boost; clock = missionTime = 0; bossSpawned = false; spawnClock = 1.4;
+    missileCooldown = 0; pendingMissile = false; lockTarget = null; lockTime = 0;
+    yaw = targetYaw = 0; altitudeTarget = isChase()?14:8; velocity.set(0, 0, 0); noticeTime = 0;
+    ui.notice.classList.remove('on'); ui.target.classList.add('hidden');
+    setupObjectives();camera.position.copy(player.position).add(V(0, 6, 13)); updateCamera(1); updateHUD();updateCombatHUD(0);
+  }
+  function startMission(id = selectedMission,training=false) {
+    if (id > profile.unlockedMission || !MISSIONS[id-1]) return false;
+    endlessActive=false;$('endlessHUD')?.classList.add('hidden');practiceActive=false;sessionDifficulty=profile.settings.difficulty;missionMap=profile.selectedMap;applyMap(missionMap);selectedMission = id; mission = MISSIONS[id-1]; reset(); running = true; hidePanel();initAudio();last=performance.now();
+    for(let i=0;i<Math.min(Math.max(2,3+difficulty().count),enemyLimit());i++) spawnEnemy();
+    beginTutorial(training);ui.missionStrip.classList.remove('hidden');
+    notify(`${TYPE_LABELS[mission.kind]}: ${missionDescription(mission)}`);
+    return true;
+  }
+  function pauseMission() {
+    if(!running) return;
+    running=false;clearInputs();pendingMissile=false;showPanel('pause');
+  }
+  function resumeMission() {
+    if(activeView!=='pause' || !mission) return;
+    hidePanel();running=true;last=performance.now();
+  }
+  function endGame(reason='Drone düşürüldü. Görevi yeniden deneyebilir veya hangarda zırhı geliştirebilirsin.') {
+    if (!running) return;
+    if(practiceActive){finishPractice();return;}
+    if(endlessActive){finishEndless();return;}
+    running=false;clearInputs();pendingMissile=false;
+    storeMissionReport(false);failureReason=reason;showPanel('defeat');
+  }
+  function completeMission() {
+    if(!running || !mission) return;
+    if(practiceActive){finishPractice();return;}
+    if(isChase()){completeChase();return;}
+    running=false;clearInputs();pendingMissile=false;
+    const previous=profile.completed[mission.id], stars=1+Number(hp>=maxHP()*.6)+Number(missionTime<=mission.goal*25+50);
+    const credits=previous?Math.floor(mission.reward*.35):mission.reward;
+    const xp=mission.xp+mission.goal*8;
+    const oldRank=pilotLevel();
+    profile.credits+=credits;profile.xp+=xp;
+    profile.bestScore=Math.max(profile.bestScore,score);
+    profile.completed[mission.id]={stars:Math.max(previous?.stars||0,stars),score:Math.max(previous?.score||0,score)};
+    profile.unlockedMission=Math.max(profile.unlockedMission,Math.min(MISSIONS.length,mission.id+1));
+    missionResult={credits,xp,stars,rankUp:pilotLevel()>oldRank,
+      message:`${mission.name} tamamlandı. ${mission.kind==='race'?`${gateIndex} kapı geçildi.`:missionAsset?`${mission.kind==='defend'?'Üs':'Konvoy'} korundu. ${missionKills} düşman düşürüldü.`:`${missionKills} düşman etkisiz hâle getirildi.`}`};
+    storeMissionReport(true);sound(700,.25,.05);showPanel('success');
+  }
+  function damagePlayer(amount,source=null) {
+    if(!running||practiceActive)return;damageMotor(Math.min(hp,Math.max(0,amount)),source);combatLog.damageTaken+=Math.min(hp,Math.max(0,amount));hp=Math.max(0,hp-amount);damageFlash=Math.min(.8,damageFlash+.42);damageDirectionTime=1.25;
+    if(source)damageAngle=indicatorAngle(source);noiseSound('metal',.8);kickCamera(player.position,.22);if(!hp){explosion(player.position,1.2);endGame();}
+  }
+  function destroyEnemy(enemy) {
+    if(!running || enemy.dead) return;
+    enemy.dead=true;missionKills++;
+    const endlessScore=endlessActive?Math.round(1+(endlessLevel-1)*.08):1;score+=(enemy.type==='boss'?1500:enemy.type==='armored'?250:enemy.type==='striker'?180:150)*endlessScore;
+    explosion(enemy.mesh.position,enemy.type==='boss'?1.8:enemy.type==='armored'?1.15:1);
+    if(lockTarget===enemy){lockTarget=null;lockTime=0;}
+    if(endlessActive&&missionKills>=mission.goal){completeEndlessWave();return;}
+    if(['combat','boss'].includes(mission.kind)&&missionKills>=mission.goal){completeMission();return;}
+    if(mission.boss && missionKills===mission.goal-1){
+      for(const foe of foes) if(!foe.dead) foe.dead=true;
+      spawnClock=2.2;notify('Lider drone yaklaşıyor');
+    }else spawnClock=Math.min(spawnClock,1.1);
+  }
+  function spawnEnemy() {
+    if(practiceActive)return spawnPracticeTarget();
+    if(!mission||mission.kind==='race'||(['combat','boss'].includes(mission.kind)&&missionKills>=mission.goal))return false;
+    const bossPhase=mission.boss && missionKills>=mission.goal-1;
+    if(endlessActive){const regularCap=mission.boss?mission.goal-1:mission.goal;if(!bossPhase&&endlessSpawned>=regularCap)return false;if(bossPhase&&bossSpawned)return false;}
+    if(bossPhase&&bossSpawned)return false;
+    if(foes.filter(e=>!e.dead).length>= (bossPhase?1:enemyLimit()))return false;
+    let type='striker';const roll=Math.random();
+    if(bossPhase){type='boss';bossSpawned=true;}
+    else if(mission.id>=3&&roll<Math.min(.3,.08+mission.id*.02))type='armored';
+    else if(roll<.48)type='scout';
+    const angle=yaw+(isChase()?Math.PI:0)+rand(-1.3,1.3);
+    const radius=isChase()?rand(85,125):type==='boss'?57:rand(34,58);
+    const pos=player.position.clone().add(V(-Math.sin(angle)*radius,rand(-3,4),-Math.cos(angle)*radius));
+    const spawnBoundary=isChase()?535:88;pos.x=clamp(pos.x,-spawnBoundary,spawnBoundary);pos.z=clamp(pos.z,-spawnBoundary,spawnBoundary);pos.y=clamp(pos.y,4,flightCeiling()-5);
+    if(pos.distanceTo(player.position)<22){
+      const inward=V(-player.position.x,0,-player.position.z).normalize().multiplyScalar(42);
+      pos.copy(player.position).add(inward);pos.y=clamp(player.position.y+3,4,28);
+    }
+    const radiusHit=type==='boss'?3.6:type==='armored'?2.45:1.8;
+    let hitpoints=type==='boss'?20+mission.id*2:type==='armored'?7+Math.floor(mission.id/3):
+      type==='scout'?2+Math.floor(mission.id/4):4+Math.floor(mission.id/4);
+    if(endlessActive)hitpoints=Math.max(2,Math.round(hitpoints*endlessHealthScale(endlessLevel)*(type==='boss'?1.45:1)));
+    for(const obstacle of activeColliders)if(obstacle.clone().expandByScalar(4).containsPoint(pos))pos.y=Math.min(flightCeiling()-3,obstacle.max.y+7);
+    const enemy={lastSeen:player.position.clone(),unseen:0,mesh:makeDrone(true,type),hp:hitpoints,maxHP:hitpoints,radius:radiusHit,type,dead:false,
+      speed:(type==='boss'?4.8:type==='armored'?5.2:type==='scout'?10:7.2)*(endlessActive?endlessSpeedScale(endlessLevel):1),
+      velocity:V(),fire:rand(type==='boss'?2.9:4.5,6.5)*(endlessActive?endlessFireScale(endlessLevel):1),phase:angle,orbit:Math.random()<.5?-1:1,
+      state:'attack',stateTime:rand(2,5),evadeCooldown:0,evadeRemaining:0,evadeDirection:V(),missileTimer:rand(12,19),smokeTime:0,attacksAsset:!!missionAsset&&Math.random()<.42};
+    enemy.mesh.scale.setScalar(type==='boss'?(endlessActive?2.05:1.85):type==='armored'?1.22:type==='scout'?.87:1);
+    enemy.mesh.position.copy(pos);scene.add(enemy.mesh);foes.push(enemy);if(endlessActive)endlessSpawned++;return true;
+  }
+  function animateRotors(drone, dt, fast = false) {
+    drone.userData.rotors.forEach((r, i) => { r.rotation.y += dt * (fast ? 95 : 70) * (i % 2 ? -1 : 1) * (drone===player?(motorHP[i]<=0?0:.28+.72*motorHP[i]/100):1); });
+  }
+  function updatePlayer(dt) {
+    const previousPosition=player.position.clone();
+    const forward = clamp((pressed('forward') ? 1 : 0) - (pressed('backward') ? 1 : 0) - joy.y, -1, 1);
+    const turn = clamp((pressed('left') ? 1 : 0) - (pressed('right') ? 1 : 0) - joy.x, -1, 1);
+    const fast = pressed('boost') && Math.abs(forward) > .05 && boost > 0;
+    const oldYaw=yaw;targetYaw += turn * 1.9 * dt; yaw = damp(yaw, targetYaw, 15, dt);flightLog.turn+=Math.abs(yaw-oldYaw);
+    const specs=flightStats();boost=clamp(boost+(fast?-30:17)*dt,0,specs.boost);
+    if(touchBoost&&boost<=0){touchBoost=false;$('touchBoost').classList.remove('active');$('touchBoost').setAttribute('aria-pressed','false');$('stick').classList.remove('boosting');}
+    if(landingAssist>=0&&(Math.abs(forward)>.1||Math.abs(turn)>.1||ascend||descend)){landingAssist=-1;repairTimer=0;altitudeTarget=Math.max(altitudeTarget,5);}
+    const power=motorPower(),desired=heading().multiplyScalar(forward*(fast?specs.fast:specs.speed)*power);
+    if(landingAssist>=0){const pad=PAD_POINTS[landingAssist];desired.set(pad.x-player.position.x,0,pad.z-player.position.z).multiplyScalar(.9);if(desired.length()>6)desired.setLength(6);const obstacle=firstObstacle(player.position,pad.clone().setY(player.position.y),1.5);altitudeTarget=obstacle?Math.min(flightCeiling()-3,obstacle.box.max.y+3):desired.length()<2?-6.65:Math.max(player.position.y,3);if(obstacle&&player.position.y<obstacle.box.max.y+2.8)desired.set(0,0,0);}
+    velocity.x=damp(velocity.x,desired.x,5.6,dt);velocity.z=damp(velocity.z,desired.z,5.6,dt);
+    const bound=flightBoundary();player.position.x=clamp(player.position.x+velocity.x*dt,-bound,bound);player.position.z=clamp(player.position.z+velocity.z*dt,-bound,bound);
+    altitudeTarget=clamp(altitudeTarget+((ascend?1:0)-(descend?1:0))*15*dt,CFG.minAltitude,flightCeiling());
+    const oldHeight=player.position.y,vertical=clamp((altitudeTarget-player.position.y)*2.6,landingAssist>=0?-2.2:-9*power,9*power);
+    velocity.y=damp(velocity.y,vertical,8,dt);player.position.y+=velocity.y*dt;resolvePlayerCollision(previousPosition,dt);
+    player.rotation.y = yaw;
+    const body = player.userData.body;
+    body.rotation.x = damp(body.rotation.x, -forward * .11, 7, dt);
