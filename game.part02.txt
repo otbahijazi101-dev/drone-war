@@ -1,0 +1,200 @@
+  <header class="hud">
+    <div class="logo">DRONE ARENA<small>OPERASYON · TAKTİK UÇUŞ</small></div>
+    <div class="stats">
+      <div class="box"><b id="score">0</b><span>PUAN</span></div>
+      <div class="box"><b id="wave">1</b><span>GÖREV</span></div>
+      <div class="box"><b id="objective">0 / 0</b><span>HEDEF</span></div>
+      <div class="box health"><b id="hptext">100%</b><div class="bar"><i id="hp"></i></div></div>
+      <span id="motorState" class="motor-state" title="Motor durumu">MOTOR 100%</span><button id="cameraButton" class="camera-button" type="button" aria-label="FPV ve dış kamera arasında geçiş">C · DIŞ</button>
+      <button id="pauseButton" class="pause-button" type="button" title="Oyunu duraklat (P)" aria-label="Oyunu duraklat">Ⅱ</button>
+    </div>
+  </header>
+  <div id="missionStrip" class="mission-strip hidden"><span id="missionLabel">GÖREV 1</span><div class="mission-meter"><i id="missionProgress"></i></div><span id="missionPercent">0%</span></div>
+  <div id="objectiveDetail" class="objective-detail"></div>
+  <div class="reticle"><i></i></div>
+  <div id="lockText" class="lock-text">HEDEFİ NİŞANGÂHTA TUT</div>
+  <div id="targetMarker" class="target-marker hidden"><span id="targetLabel"></span><div class="target-health"><i id="targetHP"></i></div></div>
+  <div class="radar-panel"><canvas id="radar" width="96" height="96" aria-label="Düşman radar görüntüsü"></canvas><span>RAKİP <b id="enemyCount">0 / 4</b></span><span>İRTİFA <b id="altitude">16 m</b></span></div>
+  <div class="weapon-controls">
+    <button id="fire" class="normal-button" type="button" aria-label="Normal atış, basılı tutunca sürekli ateş eder"><span id="primaryLabel">NORMAL ATIŞ</span><strong id="ammoCount">36 / 36</strong><small id="weaponState">BASILI TUT · SERİ ATIŞ</small></button>
+    <button id="missile" class="missile-button" type="button" aria-label="Kilitli özel füze fırlat"><span class="missile-caption"><kbd id="missileKey">R</kbd> <span id="missileCaptionText">ÖZEL FÜZE</span></span><strong id="missileText">HAZIR</strong><span class="missile-track"><i id="missileBar"></i></span></button>
+    <button class="touch-altitude" type="button" id="up" aria-label="Yüksel, basılı tut">▲<small>YÜKSEL</small></button><button class="touch-altitude" type="button" id="down" aria-label="Alçal, basılı tut">▼<small>ALÇAL</small></button>
+    <div class="weapon-telemetry" id="touchHeat"><div class="heat-caption"><span>SİLAH ISISI</span><b id="heatValue">0%</b></div><div class="heat-track"><i id="heatBar"></i></div><div class="reload-track"><i id="reloadBar"></i></div></div>
+    <button id="reloadButton" class="reload-button" type="button">E · DOLDUR</button>
+  </div>
+  <div id="damageFlash" class="damage-flash"></div><div id="damageDirection" class="direction-indicator hidden"></div><div id="hitMarker" class="hit-marker hidden">×</div>
+  <div id="threatWarning" class="threat-warning hidden"><b id="threatArrow">↑</b><span id="threatText"></span></div>
+  <aside id="tutorialCard" class="tutorial-card hidden"><strong id="tutorialStep"></strong><p id="tutorialText"></p><button id="skipTutorial" type="button">EĞİTİMİ GEÇ</button></aside>
+  <aside id="practiceHUD" class="practice-hud hidden" aria-label="Test uçuşu kontrol paneli"><strong id="practiceLoadout"></strong><span id="practiceTelemetry"></span><div><button type="button" id="practiceReset">HEDEFLERİ YENİLE</button><button type="button" id="practiceEnd">TESTİ BİTİR</button></div></aside>
+  <aside id="endlessHUD" class="endless-hud hidden" aria-label="Sonsuz Arena durumu"><strong id="endlessTitle">SONSUZ ARENA</strong><div class="endless-row"><span>SEVİYE</span><b id="endlessLevelHUD">1</b></div><div class="endless-row"><span>KALAN</span><b id="endlessRemainingHUD">0</b></div><div class="endless-row"><span>ZORLUK</span><b id="endlessDifficultyHUD">%100</b></div><div class="endless-row"><span>EN İYİ</span><b id="endlessBestHUD">1</b></div><div class="endless-meter"><i id="endlessProgressHUD"></i></div></aside>
+  <aside id="serviceHUD" class="service-hud hidden" aria-label="İniş ve tamir alanı"><strong id="serviceTitle"></strong><p id="serviceStatus"></p><div class="service-track"><i id="serviceProgress"></i></div><button type="button" id="serviceButton">F · İN / TAMİR</button></aside><div class="fpv-overlay" aria-hidden="true"><span>FPV / CANLI GÖRÜNTÜ</span><i></i></div>
+  <div id="waypoint" class="waypoint hidden"></div>
+  <div id="notice" class="notice" role="status"></div>
+  <div class="bottom"><div class="boost"><div>HIZ TAKVİYESİ</div><div class="bar"><i id="boostbar"></i></div></div><div id="flightHelp" class="desktop-help">W/S ileri/geri · A/D dönüş · Fare yön/irtifa · Sol tık basılı tut: seri atış · E doldur · R kilitli füze · Shift hızlan · P mola</div></div>
+  <div class="mobile"><div class="move-cluster"><button type="button" id="touchBoost" class="touch-boost" aria-label="Hız takviyesini aç veya kapat" aria-pressed="false">TAKVİYE<small id="touchBoostValue">100%</small></button><div class="stick" id="stick" role="group" aria-label="Uçuş çubuğu: ileri geri uçmak ve sağa sola dönmek için sürükle"><i class="nub" id="nub"></i><span class="stick-label">İLERİ / GERİ · DÖN</span></div></div></div>
+  <div id="overlay" class="overlay"><main class="menu-panel" aria-live="polite"><div class="menu-brand"><span>DRONE ARENA</span><small>OPERASYON KONSOLU</small></div><div id="panelContent"></div><footer class="menu-foot"><span id="saveState">İLERLEME BU TARAYICIDA SAKLANIR</span><span>TEK DOSYA · ÇEVRİMDIŞI OYNANIR</span></footer></main></div>
+  <script>
+
+
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const ui = {
+    overlay: $('overlay'), score: $('score'), wave: $('wave'), health: $('hp'),
+    healthText: $('hptext'), boost: $('boostbar'), notice: $('notice'), panel: $('panelContent'),
+    missile: $('missile'), missileText: $('missileText'), missileBar: $('missileBar'),
+    target: $('targetMarker'), targetLabel: $('targetLabel'), lockText: $('lockText'),
+    enemyCount: $('enemyCount'), altitude: $('altitude'), radar: $('radar'),
+    objective: $('objective'), missionStrip: $('missionStrip'), missionLabel: $('missionLabel'),
+    missionProgress: $('missionProgress'), missionPercent: $('missionPercent')
+  };
+  function fail(message) {
+    ui.panel.innerHTML = `<div class="eyebrow">HATA</div><h1>Oyun açılmadı</h1><p>${message}</p>
+      <button id="reloadGame" class="menu-btn primary">YENİDEN AÇ</button>`;
+    ui.overlay.classList.remove('hidden');
+    $('reloadGame').onclick = () => location.reload();
+  }
+  if (!window.THREE) { fail('Grafik motoru yüklenemedi. Oyun dosyasını yeniden indirip aç.'); return; }
+  const T = window.THREE;
+  let touchActive=typeof matchMedia==='function'&&matchMedia('(pointer:coarse)').matches;
+  let touchBoost=false,stickId=null,fireTouchId=null,fireTouchX=0,fireTouchY=0,lastFirePress=-Infinity;
+  const touchOwners={up:null,down:null};let lastViewportPortrait=null,lastMissilePress=-Infinity,touchEditor=null;
+  const TOUCH_ITEMS=Object.freeze({stick:{name:'Uçuş çubuğu',w:112,h:112},touchBoost:{name:'Hız takviyesi',w:112,h:48},fire:{name:'Ateş',w:96,h:94},missile:{name:'Füze',w:96,h:48},reloadButton:{name:'Doldur',w:58,h:48},up:{name:'Yüksel',w:58,h:44},down:{name:'Alçal',w:58,h:44}});
+  const defaultTouchCustomization=()=>({buttonScale:1,stickScale:1,opacity:1,sizes:{},positions:{portrait:{},landscape:{}}});
+  function cleanTouchCustomization(raw){
+    const result=defaultTouchCustomization();if(!raw||typeof raw!=='object')return result;
+    const bound=(v,min,max,fallback)=>Number.isFinite(v)?clamp(v,min,max):fallback;
+    result.buttonScale=bound(raw.buttonScale,.8,1.4,1);result.stickScale=bound(raw.stickScale,.8,1.6,1);result.opacity=bound(raw.opacity,.35,1,1);
+    for(const id of Object.keys(TOUCH_ITEMS)){
+      if(id!=='stick'&&Number.isFinite(raw.sizes?.[id]))result.sizes[id]=bound(raw.sizes[id],.75,1.6,1);
+      for(const orientation of ['portrait','landscape']){const pos=raw.positions?.[orientation]?.[id];if(pos&&Number.isFinite(pos.x)&&Number.isFinite(pos.y))result.positions[orientation][id]={x:bound(pos.x,0,1,0),y:bound(pos.y,0,1,0)};}
+    }
+    return result;
+  }
+  const touchOrientation=()=>innerHeight>innerWidth?'portrait':'landscape';
+  const touchConfig=()=>touchEditor?touchEditor.draft:profile.settings.touchLayout;
+  function touchScreen(){
+    const area=$('touchSafeArea').getBoundingClientRect();
+    return {width:innerWidth,height:innerHeight,left:Math.max(10,area.left),right:Math.max(10,innerWidth-area.right),top:Math.max(76,area.top+64),bottom:Math.max(10,innerHeight-area.bottom)};
+  }
+  function touchLayoutRects(config=touchConfig(),screen=touchScreen(),orientation=touchOrientation()){
+    const {width,height,left,right,top,bottom}=screen,availableW=width-left-right,availableH=height-top-bottom;
+    let fit=1,rects={},stacked=false;
+    const measure=()=>{
+      for(const [id,item]of Object.entries(TOUCH_ITEMS)){
+        const scale=(id==='stick'?config.stickScale:config.buttonScale*(config.sizes[id]||1))*fit;
+        const minimum=id==='stick'?76:id==='fire'?72:44;
+        rects[id]={w:Math.min(availableW,Math.max(minimum,item.w*scale)),h:Math.min(availableH,Math.max(minimum,item.h*scale)),scale};
+      }
+    };
+    measure();const a=rects;
+    let leftH=a.stick.h+a.touchBoost.h+12,rightH=Math.max(a.fire.h,a.up.h+a.down.h+6)+Math.max(a.missile.h,a.reloadButton.h)+12+24;
+    stacked=a.stick.w+Math.max(a.fire.w,a.missile.w)+Math.max(a.up.w,a.down.w,a.reloadButton.w)+22>availableW;
+    if(stacked&&leftH+rightH+16>availableH){fit=Math.max(.55,availableH/(leftH+rightH+16));measure();}
+    const f=rects.fire,u=rects.up,d=rects.down,m=rects.missile,r=rects.reloadButton,b=rects.touchBoost,j=rects.stick;
+    const anchorRight=width-right,lower=height-bottom;
+    j.x=left+j.w/2;j.y=lower-j.h/2;b.x=left+b.w/2;b.y=lower-j.h-12-b.h/2;
+    const weaponBottom=stacked?lower-j.h-b.h-28:lower-24;
+    f.x=anchorRight-f.w/2;f.y=weaponBottom-f.h/2;
+    d.x=anchorRight-Math.max(f.w,m.w)-8-d.w/2;d.y=weaponBottom-d.h/2;
+    u.x=anchorRight-Math.max(f.w,m.w)-8-u.w/2;u.y=weaponBottom-d.h-6-u.h/2;
+    const rowBottom=Math.min(f.y-f.h/2,u.y-u.h/2)-8;
+    m.x=anchorRight-m.w/2;m.y=rowBottom-m.h/2;r.x=anchorRight-Math.max(f.w,m.w)-8-r.w/2;r.y=rowBottom-r.h/2;
+    for(const [id,rect]of Object.entries(rects)){
+      const position=config.positions[orientation][id];
+      if(position){rect.x=left+rect.w/2+position.x*Math.max(0,availableW-rect.w);rect.y=top+rect.h/2+position.y*Math.max(0,availableH-rect.h);}
+      rect.x=clamp(rect.x,left+rect.w/2,width-right-rect.w/2);rect.y=clamp(rect.y,top+rect.h/2,height-bottom-rect.h/2);
+    }
+    return rects;
+  }
+  function applyTouchCustomization(){
+    document.body.classList.toggle('touch-custom-controls',touchActive);
+    const properties=['position','left','top','right','bottom','width','height','minWidth','minHeight','transform','margin'];
+    if(!touchActive){for(const id of Object.keys(TOUCH_ITEMS)){const el=$(id);for(const property of properties)el.style[property]='';el.style.removeProperty('--control-size');}$('touchHeat').style.left='';$('touchHeat').style.top='';$('touchHeat').style.width='';return;}
+    const config=touchConfig(),screen=touchScreen(),rects=touchLayoutRects(config,screen);
+    document.documentElement.style.setProperty('--touch-control-opacity',String(config.opacity));
+    for(const [id,rect]of Object.entries(rects)){
+      const el=$(id);el.classList.add('custom-touch-control');
+      Object.assign(el.style,{position:'fixed',left:`${rect.x-rect.w/2}px`,top:`${rect.y-rect.h/2}px`,right:'auto',bottom:'auto',width:`${rect.w}px`,height:`${rect.h}px`,minWidth:`${rect.w}px`,minHeight:`${rect.h}px`,transform:'none',margin:'0'});
+      el.style.setProperty('--control-size',String(Math.max(.8,Math.min(1.8,rect.scale))));
+      el.classList.toggle('layout-selected',!!touchEditor&&touchEditor.selected===id);
+      if(touchEditor)el.disabled=false;
+    }
+    const fire=rects.fire,heat=$('touchHeat'),heatWidth=Math.min(160,Math.max(92,fire.w));
+    heat.style.left=`${clamp(fire.x-heatWidth/2,screen.left,innerWidth-screen.right-heatWidth)}px`;
+    heat.style.top=`${Math.min(innerHeight-screen.bottom-18,fire.y+fire.h/2+5)}px`;heat.style.width=`${heatWidth}px`;
+    if(touchEditor)refreshTouchEditor();
+  }
+  function touchCustomizationSettings(){
+    const c=profile.settings.touchLayout;
+    return `<div class="touch-custom-settings"><label>Düğme boyutu <b id="touchButtonSizeValue">%${Math.round(c.buttonScale*100)}</b><input type="range" data-touch-layout="buttonScale" aria-label="Telefon düğmelerinin boyutu" min="80" max="140" step="5" value="${Math.round(c.buttonScale*100)}"></label><label>Uçuş çubuğu <b id="touchStickSizeValue">%${Math.round(c.stickScale*100)}</b><input type="range" data-touch-layout="stickScale" aria-label="Uçuş çubuğunun boyutu" min="80" max="160" step="5" value="${Math.round(c.stickScale*100)}"></label><label>Görünürlük <b id="touchOpacityValue">%${Math.round(c.opacity*100)}</b><input type="range" data-touch-layout="opacity" aria-label="Telefon kumandalarının görünürlüğü" min="35" max="100" step="5" value="${Math.round(c.opacity*100)}"></label></div><p class="touch-quality-note">Daha düşük görünürlük, daha saydam kumandalar demektir. Konumlar yatay ve dikey ekran için ayrı kaydedilir.</p><div class="menu-actions">${actionButton('touch-layout','KUMANDALARI YERLEŞTİR','primary')}${actionButton('touch-layout-reset','VARSAYILANA DÖN')}</div>`;
+  }
+  function changeTouchCustomization(event){
+    const name=event.target.dataset.touchLayout;if(!['buttonScale','stickScale','opacity'].includes(name))return false;
+    const value=Number(event.target.value);if(!Number.isFinite(value))return true;
+    profile.settings.touchLayout=cleanTouchCustomization({...profile.settings.touchLayout,[name]:value/100});
+    const ids={buttonScale:'touchButtonSizeValue',stickScale:'touchStickSizeValue',opacity:'touchOpacityValue'};
+    if($(ids[name]))$(ids[name]).textContent=`%${Math.round(profile.settings.touchLayout[name]*100)}`;
+    applyTouchCustomization();if(event.type==='change')saveProfile();return true;
+  }
+  function openTouchEditor(){
+    if(touchEditor)return;if(running)pauseMission();clearInputs();pendingMissile=false;
+    touchEditor={returnView:activeView,draft:cleanTouchCustomization(profile.settings.touchLayout),selected:'fire',drag:null,collapsed:false};
+    activeView='touch-layout';ui.overlay.classList.add('hidden');document.body.classList.remove('menu-open','garage-open');document.body.classList.add('layout-editing');
+    $('touchLayoutEditor').classList.remove('hidden');$('touchLayoutEditor').setAttribute('aria-hidden','false');updateTouchLayout();setTouchQuality();
+    $('layoutSave').focus();
+  }
+  function closeTouchEditor(save){
+    if(!touchEditor)return;finishTouchDrag(false);const previous=touchEditor.returnView;
+    if(save){profile.settings.touchLayout=cleanTouchCustomization(touchEditor.draft);saveProfile();}
+    touchEditor=null;document.body.classList.remove('layout-editing','layout-dragging');$('touchLayoutEditor').classList.add('hidden');$('touchLayoutEditor').setAttribute('aria-hidden','true');
+    updateTouchLayout();setTouchQuality();updateHUD();updateCombatHUD(0);showPanel(previous==='touch-layout'?'settings':previous);
+    settingsMessage=save?'Telefon kumandaları kaydedildi.':'Düzenleme iptal edildi.';if(activeView==='settings')renderPanel();
+  }
+  function refreshTouchEditor(){
+    if(!touchEditor)return;const {selected,draft,collapsed}=touchEditor;
+    $('layoutOrientation').textContent=touchOrientation()==='portrait'?'DİKEY DÜZEN':'YATAY DÜZEN';$('layoutSelection').value=selected;
+    const value=selected==='stick'?draft.stickScale:draft.sizes[selected]||1;
+    $('layoutSize').min=selected==='stick'?'80':'75';$('layoutSize').value=String(Math.round(value*100));$('layoutSizeValue').textContent=`%${Math.round(value*100)}`;
+    $('layoutOpacity').value=String(Math.round(draft.opacity*100));$('layoutOpacityValue').textContent=`%${Math.round(draft.opacity*100)}`;
+    $('touchLayoutInspector').classList.toggle('hidden',collapsed);$('layoutCollapse').textContent=collapsed?'AYARLARI AÇ':'PANELİ KÜÇÜLT';$('layoutCollapse').setAttribute('aria-expanded',String(!collapsed));
+    const rects=touchLayoutRects(),values=Object.values(rects);let overlap=false;
+    for(let i=0;i<values.length;i++)for(let k=i+1;k<values.length;k++){const a=values[i],b=values[k];if(Math.abs(a.x-b.x)<(a.w+b.w)/2-3&&Math.abs(a.y-b.y)<(a.h+b.h)/2-3)overlap=true;}
+    $('layoutStatus').textContent=overlap?'Bazı kumandalar üst üste. Sürükleyerek ayırabilirsin.':'Bir kumandayı sürükle veya seçip boyutunu değiştir.';
+  }
+  function beginTouchDrag(id,event){
+    if(!touchEditor||(event.pointerType==='mouse'&&event.button!==0))return;
+    event.preventDefault();event.stopImmediatePropagation();if(touchEditor.drag)return;
+    touchEditor.selected=id;const rect=touchLayoutRects()[id],orientation=touchOrientation(),position=touchEditor.draft.positions[orientation][id];
+    touchEditor.drag={id,pointer:event.pointerId,orientation,dx:event.clientX-rect.x,dy:event.clientY-rect.y,previous:position?{...position}:null};
+    capture($(id),event.pointerId);document.body.classList.add('layout-dragging');applyTouchCustomization();
+  }
+  function moveTouchDrag(event){
+    const drag=touchEditor?.drag;if(!drag||event.pointerId!==drag.pointer)return;
+    event.preventDefault();event.stopImmediatePropagation();const bounds=touchScreen(),rect=touchLayoutRects()[drag.id];
+    const width=bounds.width-bounds.left-bounds.right-rect.w,height=bounds.height-bounds.top-bounds.bottom-rect.h;
+    const x=width>0?(event.clientX-drag.dx-bounds.left-rect.w/2)/width:0,y=height>0?(event.clientY-drag.dy-bounds.top-rect.h/2)/height:0;
+    touchEditor.draft.positions[drag.orientation][drag.id]={x:clamp(x,0,1),y:clamp(y,0,1)};applyTouchCustomization();
+  }
+  function finishTouchDrag(commit=true){
+    const drag=touchEditor?.drag;if(!drag)return;touchEditor.drag=null;
+    if(!commit){if(drag.previous)touchEditor.draft.positions[drag.orientation][drag.id]=drag.previous;else delete touchEditor.draft.positions[drag.orientation][drag.id];}
+    releaseCapture($(drag.id),drag.pointer);document.body.classList.remove('layout-dragging');applyTouchCustomization();
+  }
+  function bindTouchEditor(){
+    for(const id of Object.keys(TOUCH_ITEMS)){
+      $(id).addEventListener('pointerdown',event=>beginTouchDrag(id,event),true);
+      $(id).addEventListener('lostpointercapture',event=>{if(touchEditor?.drag?.pointer===event.pointerId)finishTouchDrag(false);});
+      $(id).addEventListener('click',event=>{if(touchEditor){event.preventDefault();event.stopImmediatePropagation();touchEditor.selected=id;applyTouchCustomization();}},true);
+    }
+    window.addEventListener('pointermove',moveTouchDrag,true);
+    for(const type of ['pointerup','pointercancel'])window.addEventListener(type,event=>{if(touchEditor?.drag?.pointer===event.pointerId){event.preventDefault();event.stopImmediatePropagation();finishTouchDrag(type==='pointerup');}},true);
+    window.addEventListener('blur',()=>finishTouchDrag(false));document.addEventListener('visibilitychange',()=>{if(document.hidden)finishTouchDrag(false);});
+    $('touchLayoutEditor').addEventListener('click',event=>{
+      const action=event.target.closest('[data-layout-action]')?.dataset.layoutAction;if(!action||!touchEditor)return;
+      if(action==='save'){closeTouchEditor(true);return;}if(action==='cancel'){closeTouchEditor(false);return;}
+      if(action==='collapse')touchEditor.collapsed=!touchEditor.collapsed;
+      if(action==='reset-positions'){finishTouchDrag(false);touchEditor.draft.positions[touchOrientation()]={};}
+      if(action==='reset-selected'){finishTouchDrag(false);const id=touchEditor.selected;delete touchEditor.draft.positions[touchOrientation()][id];if(id==='stick')touchEditor.draft.stickScale=1;else delete touchEditor.draft.sizes[id];}
+      applyTouchCustomization();
+    });
