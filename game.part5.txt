@@ -1,0 +1,400 @@
+    const motors=!enemy&&model.shape==='hex'?Array.from({length:6},(_,i)=>V(Math.cos(i*Math.PI/3)*2.05,.08,Math.sin(i*Math.PI/3)*1.85)):[V(-1.52,.08,-1.23),V(-1.52,.08,1.23),V(1.52,.08,-1.23),V(1.52,.08,1.23)];
+    for (const baseMotor of motors) {
+      const motor=baseMotor.clone();if(!enemy)motor.multiplyScalar(model.span);const sx=Math.sign(motor.x)||1,sz=Math.sign(motor.z)||1;
+      strut(body, V(sx * .43, -.02, sz * .38), motor, .11, carbon);
+      strut(body, V(sx * .44, .04, sz * .44), motor.clone().add(V(0, .06, 0)), .028, alloy);
+      mesh(body, new T.CylinderGeometry(.20, .22, .28, 12), alloy, motor.x, .13, motor.z);
+      mesh(body, new T.CylinderGeometry(.13, .13, .10, 10), carbon, motor.x, .32, motor.z);
+      const rotor = new T.Group(); rotor.position.set(motor.x, .39, motor.z); body.add(rotor);
+      if(!enemy&&paint.blades===3){
+        for(let i=0;i<3;i++){const arm=new T.Group();arm.rotation.y=i*Math.PI*2/3;rotor.add(arm);box(arm,carbon,.8,.027,.14,.4,0,0);}
+      }else{const blade=box(rotor,carbon,1.66,.025,.12);blade.rotation.y=.1;}
+      rotor.userData.blades=!enemy?paint.blades:2;
+      const blur = new T.MeshBasicMaterial({color: 0x263335, transparent: true, opacity: .11,
+        side: T.DoubleSide, depthWrite: false});
+      const disk = mesh(rotor, new T.CircleGeometry(.84, 24), blur, 0, .007, 0);
+      disk.rotation.x = -Math.PI / 2; disk.castShadow = false;
+      root.userData.rotors.push(rotor);
+      mesh(body, new T.SphereGeometry(.075, 7, 6), sx < 0 ? red : green, motor.x, -.10, motor.z);
+    }
+    for (const x of [-.66, .66]) {
+      strut(body, V(x, -.19, -.53), V(x * 1.25, -.86, -.53), .04, alloy);
+      strut(body, V(x, -.19, .58), V(x * 1.25, -.86, .58), .04, alloy);
+      strut(body, V(x * 1.25, -.87, -.93), V(x * 1.25, -.87, .94), .055, rubber);
+    }
+    strut(body, V(.18, .5, .58), V(.21, 1.03, .64), .018, carbon);
+    if(!enemy){
+      const trim=steel(paint.led,.4,.35);
+      if(model.shape==='racer'||model.shape==='wing'){
+        const wing=box(body,shell,model.shape==='wing'?3.4:2.5,.08,.75,0,.02,.5);wing.rotation.x=.05;
+        for(const side of [-1,1]){const fin=box(body,carbon,.07,.6,.55,side*.58,.46,.72);fin.rotation.z=side*.23;}
+      }
+      if(model.shape==='guard')for(const motor of motors){const ring=mesh(body,new T.TorusGeometry(.87,.055,6,32),alloy,motor.x*model.span,.35,motor.z*model.span);ring.rotation.x=-Math.PI/2;}
+      if(model.shape==='attack'||model.shape==='hex')for(const side of [-1,1]){
+        const pod=mesh(body,new T.CylinderGeometry(.18,.18,1.05,10),shell,side*.57,-.46,.15);pod.rotation.x=Math.PI/2;
+      }
+      if(activeUpgrades().hull>0){for(const side of [-1,1])box(body,alloy,.07,.24,1.3,side*.79,.06,.1);}
+      box(body,trim,.48,.03,.09,0,.57,-.10);
+      body.scale.set(...model.bodyScale);
+    }
+    root.userData.body = body; root.userData.cameraBall = cameraBall;
+    return root;
+  }
+  function disposeObject(object) {
+    if(object.parent)object.parent.remove(object);
+    const gs = new Set(), ms = new Set();
+    object.traverse(o => { if (o.geometry) gs.add(o.geometry);
+      if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => ms.add(m)); });
+    gs.forEach(g => g.dispose()); ms.forEach(m => m.dispose());
+  }
+  const bulletGeo = new T.SphereGeometry(.26, 8, 8), enemyGeo = new T.SphereGeometry(.20, 6, 6);
+  const bulletMat = new T.MeshBasicMaterial({color: 0xff1616, toneMapped: false}), enemyMat = new T.MeshBasicMaterial({color: 0x050505, toneMapped: false});
+  const tracerGeo=new T.BoxGeometry(.09,.09,2.2);
+  const particleGeo = new T.SphereGeometry(1, 5, 5);
+  let player, foes = [], bullets = [], enemyShots = [], missiles = [], particles = [];
+  let running = false, score = 0, hp = 100, missionKills = 0, boost = 100, clock = 0, missionTime = 0;
+  let mission = null, bossSpawned = false;
+  let spawnClock = 1.5, missileCooldown = 0, pendingMissile = false;
+  const primaryInterval = .16, MAGAZINE=36;
+  let ammo=MAGAZINE,heat=0,overheated=false,reloadRemaining=0;
+  let enemyMissiles=[],damageFlash=0,damageAngle=0,damageDirectionTime=0,hitTime=0,warningBeep=0;
+  let missionAsset=null,raceGates=[],gateIndex=0,failureReason='Drone düşürüldü. Hangarda zırhı geliştirebilirsin.';
+  let tutorialActive=false,tutorialStep=0;
+  let flightLog={distance:0,turn:0,height:0,shots:0,reloads:0,missiles:0};
+  let primaryHeld = false, primaryPointer = null, primaryCooldown = 0, muzzleSide = 1;
+  const maxHP = () => flightStats().hp;
+  const missileReload = () => flightStats().reload;
+  const targetLockTime = () => flightStats().lock;
+  let lockTarget = null, lockTime = 0, last = 0, noticeTime = 0, radarClock = 0;
+  let yaw = 0, targetYaw = 0, altitudeTarget = 8;
+  const velocity = V(), joy = {x: 0, y: 0};
+  let keys = {}, ascend = false, descend = false;
+  let lastMouseX = null, lastMouseY = null, lookPointer = null, lastTouchX = 0, lastTouchY = 0;
+  const radarContext = ui.radar.getContext('2d');
+  function heading() { return V(-Math.sin(yaw), 0, -Math.cos(yaw)); }
+  function clearInputs() {
+    resetTouchInputs();const oldLook=lookPointer;primaryHeld=false;primaryPointer=null;primaryCooldown=0;lookPointer=null;releaseCapture(canvas,oldLook);
+    keys = {}; ascend = descend = false; joy.x = joy.y = 0;
+    lastMouseX = lastMouseY = null; lookPointer = null; $('nub').style.transform = '';
+  }
+  function notify(text) { ui.notice.textContent = text; noticeTime = 2.4; ui.notice.classList.add('on'); }
+  function clearEffects() {
+    bullets.concat(enemyShots).forEach(b => scene.remove(b.mesh)); bullets = []; enemyShots = [];
+    missiles.forEach(m => disposeObject(m.mesh)); missiles = [];
+    enemyMissiles.forEach(m=>disposeObject(m.mesh));enemyMissiles=[];
+    particles.forEach(removeParticle);particles=[];cameraImpulse=0;
+  }
+  function setupObjectives(){
+    if(missionAsset)disposeObject(missionAsset.mesh);missionAsset=null;
+    raceGates.forEach(g=>disposeObject(g.mesh));raceGates=[];gateIndex=0;
+    setupChaseMarkers();if(!mission)return;
+    if(mission.kind==='defend'||mission.kind==='escort'){
+      const model=new T.Group(),metal=steel(0x626b50,.8,.2),rubber=steel(0x191e1b);
+      if(mission.kind==='defend'){
+        box(model,metal,11,3.2,9);box(model,steel(0xaaa796),12,.6,10,0,1.8,0);
+        const mast=mesh(model,new T.CylinderGeometry(.14,.2,9,8),metal,0,6,0);
+        mesh(model,new T.SphereGeometry(1.3,12,8),steel(0xaaa897),0,10,0);
+        model.position.set(0,-6,8);
+      }else{
+        box(model,metal,3.5,2,7,0,1.25,0);box(model,metal,3.1,1.5,2.4,0,2.5,-1.6);
+        box(model,steel(0x2e4650,.2,.5),2.5,.7,.04,0,2.7,-2.82);
+        for(const x of [-1.8,1.8])for(const z of [-2,2]){
+          const wheel=mesh(model,new T.CylinderGeometry(.8,.8,.5,12),rubber,x,.3,z);wheel.rotation.z=Math.PI/2;
+        }
+        model.position.set(18,-7,75);
+      }
+      scene.add(model);missionAsset={mesh:model,hp:240,maxHP:240,radius:mission.kind==='defend'?6:4};
+    }
+    if(mission.kind==='race'){
+      const points=[[0,8,8],[0,10,-27],[28,13,-60],[60,17,-28],[60,12,22],[26,8,59],[-22,13,57],[-58,18,24],[-53,13,-25],[-22,9,-61]];
+      let previous=player.position.clone();
+      for(let i=0;i<mission.gates;i++){
+        const point=V(...points[i]),normal=point.clone().sub(previous).normalize();
+        const root=new T.Group();root.position.copy(point);root.quaternion.setFromUnitVectors(V(0,0,1),normal);
+        const ring=mesh(root,new T.TorusGeometry(6,.14,8,40),new T.MeshBasicMaterial({color:i?0x75816d:0xffd47f}));
+        const inner=mesh(root,new T.TorusGeometry(5.55,.035,5,32),new T.MeshBasicMaterial({color:0xdbdfc7,transparent:true,opacity:.35}));
+        root.visible=i<2;scene.add(root);raceGates.push({mesh:root,position:point,normal,ring,inner});previous=point;
+      }
+    }
+  }
+  function objectiveProgress(){
+    if(!mission||practiceActive)return 0;
+    if(isChase())return chaseCheckpoint/5;
+    if(mission.kind==='race')return gateIndex/mission.gates;
+    if(['defend','escort'].includes(mission.kind))return Math.min(1,missionTime/mission.duration);
+    return missionKills/mission.goal;
+  }
+  function updateObjectives(dt,previousPlayer){
+    if(!running||!mission||practiceActive)return;
+    if(isChase()){updateChase(dt);return;}
+    if(missionAsset){
+      if(mission.kind==='escort'){
+        const f=clamp(missionTime/mission.duration,0,1);
+        missionAsset.mesh.position.z=75-f*155;missionAsset.mesh.position.x=18+Math.sin(f*Math.PI*2)*9;
+        missionAsset.mesh.rotation.y=-Math.atan2(Math.cos(f*Math.PI*2)*18*Math.PI,-155);
+      }
+      if(missionAsset.hp<=0){endGame(mission.kind==='defend'?'Savunulan üs yok edildi.':'Konvoy yok edildi.');return;}
+      if(missionTime>=mission.duration){completeMission();return;}
+    }
+    if(mission.kind==='race'){
+      const gate=raceGates[gateIndex];
+      if(gate){
+        const a=previousPlayer.clone().sub(gate.position).dot(gate.normal),b=player.position.clone().sub(gate.position).dot(gate.normal);
+        if(a<=0&&b>=0&&b-a>.00001){
+          const crossing=previousPlayer.clone().lerp(player.position,a/(a-b));
+          if(crossing.distanceTo(gate.position)<=5.8){
+            gate.mesh.visible=false;gateIndex++;score+=250;sound(900,.12,.04);notify(`Kapı ${gateIndex} / ${mission.gates}`);
+            if(gateIndex===mission.gates){completeMission();return;}
+            raceGates.forEach((g,i)=>{g.mesh.visible=i===gateIndex||i===gateIndex+1;g.ring.material.color.setHex(i===gateIndex?0xffd47f:0x75816d);});
+          }
+        }
+      }
+      if(missionTime>=mission.duration)endGame('Süre doldu. Kapıları sırayla geçerek parkuru tamamla.');
+    }
+  }
+  function hitAsset(amount){if(!missionAsset||!running)return;missionAsset.hp=Math.max(0,missionAsset.hp-amount);noiseSound('metal',.4);}
+  function beginTutorial(force=false){
+    tutorialActive=mission?.id===1&&(force||!profile.tutorialDone);tutorialStep=0;
+    flightLog={distance:0,turn:0,height:0,shots:0,reloads:0,missiles:0};
+    if(tutorialActive){
+      foes.forEach((e,i)=>{e.mesh.position.copy(player.position).add(V(i*9-9,i, -38));e.fire=999;e.training=true;});
+    }
+    $('tutorialCard').classList.toggle('hidden',!tutorialActive);
+  }
+  function finishTutorial(){
+    tutorialActive=false;profile.tutorialDone=true;saveProfile();$('tutorialCard').classList.add('hidden');
+    foes.forEach(e=>{e.training=false;e.fire=4;});notify('Eğitim tamam. Göreve devam edebilirsin.');
+  }
+  function updateTutorial(){
+    if(!tutorialActive)return;
+    const b=profile.settings.bindings;
+    const steps=[
+      ['Uçuş',touchActive?'Sol çubuğu yukarı sürükleyerek en az 8 metre ileri uç.':`${keyLabel(b.forward)} ile en az 8 metre ileri uç.`,()=>flightLog.distance>=8],
+      ['Dönüş',touchActive?'Sol çubuğu sağa / sola veya sağ ekranı yatay sürükleyerek dön.':`Fareyi yatay hareket ettir veya ${keyLabel(b.left)} / ${keyLabel(b.right)} ile yön değiştir.`,()=>flightLog.turn>=.45],
+      ['İrtifa',touchActive?'Sağ ekranı dikey sürükle veya YÜKSEL / ALÇAL ile 3 metre irtifa değiştir.':'Fareyi yukarı / aşağı hareket ettirerek 3 metre irtifa değiştir.',()=>flightLog.height>=3],
+      ['Seri atış',touchActive?'ATEŞ düğmesine basılı tutup 3 mermi at. Basılıyken sürükleyerek yön ve irtifayı değiştirebilirsin.':'Sol tuşa basılı tutarak 3 mermi at. Isı göstergesini izle.',()=>flightLog.shots>=3],
+      ['Şarjör',touchActive?'DOLDUR düğmesine dokunarak şarjörü yenile.':`${keyLabel(b.reload)} ile şarjörü yenile.`,()=>flightLog.reloads>=1],
+      ['Hedef kilidi','Sarı işaretli eğitim drone’unu nişangâhta tut. Hedef kilidinin dolmasını bekle.',()=>!!lockTarget&&lockTime>=targetLockTime()],
+      ['Özel füze',touchActive?'FÜZE düğmesine dokunarak kilitli hedefe ateş et.':`${keyLabel(b.missile)} ile kilitli hedefe ateş et.`,()=>flightLog.missiles>=1]
+    ];
+    if(steps[tutorialStep][2]()){
+      tutorialStep++;
+      if(tutorialStep>=steps.length){finishTutorial();return;}
+      if(tutorialStep===5){
+        let target=foes.find(e=>!e.dead);if(!target){spawnEnemy();target=foes.find(e=>!e.dead);}
+        if(target){target.mesh.position.copy(camera.position).addScaledVector(camera.getWorldDirection(V()),45);target.hp=Math.max(10,target.maxHP);target.maxHP=target.hp;target.training=true;}
+      }
+      sound(600,.1,.02);
+    }
+    $('tutorialStep').textContent=`EĞİTİM ${tutorialStep+1} / ${steps.length} · ${steps[tutorialStep][0]}`;
+    $('tutorialText').textContent=steps[tutorialStep][1];
+  }
+  function beginReload(){
+    if(!running||reloadRemaining>0||ammo===MAGAZINE)return false;
+    reloadRemaining=2.2;noiseSound('reload');return true;
+  }
+  function updateWeapon(dt){
+    primaryCooldown=Math.max(0,primaryCooldown-dt);
+    heat=Math.max(0,heat-dt*(overheated?32:primaryHeld&&reloadRemaining===0?7:28));
+    if(overheated&&heat<=32){overheated=false;notify('Silah soğudu');}
+    if(reloadRemaining>0){
+      reloadRemaining=Math.max(0,reloadRemaining-dt);
+      if(reloadRemaining===0){ammo=MAGAZINE;flightLog.reloads++;noiseSound('reload');}
+    }
+    if(primaryHeld&&primaryCooldown<=0)requestPrimaryShot();
+  }
+  function indicatorAngle(source){
+    const d=source.clone().sub(player.position);
+    const right=d.x*Math.cos(yaw)-d.z*Math.sin(yaw),back=d.x*Math.sin(yaw)+d.z*Math.cos(yaw);
+    return Math.atan2(right,-back)*180/Math.PI;
+  }
+  function launchEnemyMissile(enemy){
+    if(enemyMissiles.length>=2||!running||tutorialActive||practiceActive)return false;
+    const m=createMissile(true),direction=player.position.clone().sub(enemy.mesh.position).normalize();
+    m.position.copy(enemy.mesh.position).addScaledVector(direction,3);m.quaternion.setFromUnitVectors(FORWARD,direction);scene.add(m);
+    enemyMissiles.push({mesh:m,direction,speed:23,life:7.5,smoke:0});noiseSound('missile',.5);return true;
+  }
+  function updateEnemyMissiles(dt){
+    for(const m of enemyMissiles){
+      const desired=player.position.clone().sub(m.mesh.position).normalize();
+      m.direction.lerp(desired,1-Math.exp(-(velocity.length()>26?.75:1.25)*dt)).normalize();
+      m.speed=Math.min(38,m.speed+7*dt);const previous=m.mesh.position.clone();
+      m.mesh.position.addScaledVector(m.direction,m.speed*dt);m.mesh.quaternion.setFromUnitVectors(FORWARD,m.direction);m.life-=dt;m.smoke-=dt;
+      if(m.smoke<=0){m.smoke=.09;particle(m.mesh.position,0x444441,.48,.8,V(0,1,0),'smoke');}
+      const blocked=firstObstacle(previous,m.mesh.position,.25);if(blocked){m.mesh.position.copy(previous).lerp(m.mesh.position,Math.max(0,blocked.t-.01));explosion(m.mesh.position,.9);m.life=0;}
+      else if(segmentDistanceSq(previous,m.mesh.position,player.position)<5){
+        explosion(m.mesh.position,1.15);damagePlayer(22*difficulty().damage,previous);m.life=0;
+      }
+      if(m.mesh.position.y< -7)m.life=0;
+    }
+    enemyMissiles=enemyMissiles.filter(m=>{if(m.life>0)return true;disposeObject(m.mesh);return false;});
+    warningBeep-=dt;
+    if(enemyMissiles.length&&warningBeep<=0){sound(980,.10,.055);warningBeep=.65;}
+  }
+  function updateCombatHUD(dt){
+    damageFlash=Math.max(0,damageFlash-dt*1.9);damageDirectionTime=Math.max(0,damageDirectionTime-dt);hitTime=Math.max(0,hitTime-dt);
+    $('damageFlash').style.opacity=damageFlash;
+    $('damageDirection').classList.toggle('hidden',damageDirectionTime<=0);
+    $('damageDirection').style.transform=`translate(-50%,-50%) rotate(${damageAngle}deg)`;
+    $('hitMarker').classList.toggle('hidden',hitTime<=0);
+    $('primaryLabel').textContent=touchActive?'ATEŞ':'NORMAL ATIŞ';$('missileCaptionText').textContent=touchActive?'FÜZE':'ÖZEL FÜZE';
+    $('ammoCount').textContent=touchActive?String(ammo):`${ammo} / ${MAGAZINE}`;
+    $('weaponState').textContent=reloadRemaining>0?`DOLDURULUYOR ${reloadRemaining.toFixed(1)} sn`:overheated?'AŞIRI ISI · SOĞUYOR':touchActive?'BASILI TUT + SÜRÜKLE':'BASILI TUT · SERİ ATIŞ';
+    $('heatBar').style.width=`${heat}%`;$('heatBar').classList.toggle('hot',heat>75);
+    $('heatValue').textContent=overheated?'SOĞUTMA':`${Math.round(heat)}%`;
+    $('reloadBar').style.width=reloadRemaining>0?`${(1-reloadRemaining/2.2)*100}%`:'0%';
+    $('reloadButton').textContent=touchActive?(reloadRemaining>0?`DOLUM ${reloadRemaining.toFixed(1)}`:'DOLDUR'):`${keyLabel(profile.settings.bindings.reload)} · DOLDUR`;
+    $('touchBoostValue').textContent=`${Math.round(boost/flightStats().boost*100)}%`;
+    $('reloadButton').disabled=reloadRemaining>0||ammo===MAGAZINE;
+    $('missileKey').textContent=keyLabel(profile.settings.bindings.missile);
+    const binds=profile.settings.bindings;
+    $('flightHelp').textContent=`${keyLabel(binds.forward)}/${keyLabel(binds.backward)} uçuş · ${keyLabel(binds.left)}/${keyLabel(binds.right)} dönüş · Sol tuş basılı: ateş · ${keyLabel(binds.reload)} doldur · ${keyLabel(binds.missile)} füze · ${keyLabel(binds.boost)} hız · ${keyLabel(binds.pause)} mola`;
+    $('pauseButton').title=`Oyunu duraklat (${keyLabel(binds.pause)})`;
+    $('threatWarning').classList.toggle('hidden',!enemyMissiles.length);
+    if(enemyMissiles.length){
+      let nearest=enemyMissiles[0];for(const m of enemyMissiles)if(m.mesh.position.distanceToSquared(player.position)<nearest.mesh.position.distanceToSquared(player.position))nearest=m;
+      $('threatArrow').style.transform=`rotate(${indicatorAngle(nearest.mesh.position)}deg)`;
+      $('threatText').textContent=`FÜZE · ${Math.round(nearest.mesh.position.distanceTo(player.position))} m · ${touchLabel('boost','TAKVİYE')} + DÖNÜŞ`;
+    }
+    $('objectiveDetail').textContent=!mission?'':practiceActive?`TEST · ${missionKills} HEDEF · ${formatDuration(missionTime)} · ${mapById(missionMap).name}`:isChase()?`KOVALAMACA ${threatLevel()}/5 · NOKTA ${chaseCheckpoint}/4 · ${Math.max(0,Math.ceil(chaseTimeLimit-missionTime))} sn`:mission.kind==='race'?`SÜRE ${Math.max(0,Math.ceil(mission.duration-missionTime))} sn · KAPI ${gateIndex}/${mission.gates}`:
+      missionAsset?`${mission.kind==='defend'?'ÜS':'KONVOY'} CANI ${Math.ceil(missionAsset.hp/missionAsset.maxHP*100)}% · ${Math.max(0,Math.ceil(mission.duration-missionTime))} sn`:
+      `${missionKills}/${mission.goal} HEDEF · ${Math.floor(missionTime/60)}:${String(Math.floor(missionTime%60)).padStart(2,'0')}`;
+    flightSystemsHUD();
+    $('practiceHUD').classList.toggle('hidden',!practiceActive);
+    if(practiceActive){
+      $('practiceLoadout').textContent=`${droneById(activeDroneId()).name} · ${practiceConfig.upgraded?'MEVCUT PARÇALAR':'FABRİKA'}`;
+      $('practiceTelemetry').textContent=`Hız ${combatLog.currentSpeed.toFixed(1)} m/sn · Mermi ${flightStats().damage} · Son isabet ${numberText(combatLog.lastHit)}`;
+    }
+    const gate=raceGates[gateIndex],waypoint=isChase()?(CHASE_POINTS[chaseCheckpoint]||EXTRACTION):mission?.kind==='race'?gate?.position:missionAsset?.mesh.position;
+    $('waypoint').classList.toggle('hidden',!waypoint);
+    if(waypoint){
+      const p=waypoint.clone().project(camera);const inFront=waypoint.clone().sub(camera.position).dot(camera.getWorldDirection(V()))>0;
+      $('waypoint').style.left=`${clamp((p.x+1)*50,8,92)}%`;$('waypoint').style.top=`${clamp((1-p.y)*50,22,75)}%`;
+      $('waypoint').textContent=`${inFront?'◇':'↶'} ${isChase()?(chaseCheckpoint<4?`NOKTA ${chaseCheckpoint+1}`:'ÇIKIŞ'):mission.kind==='race'?`KAPI ${gateIndex+1}`:mission.kind==='defend'?'ÜS':'KONVOY'} · ${Math.round(waypoint.distanceTo(player.position))} m`;
+    }
+  }
+
+  function reset() {
+    clearInputs(); clearEffects(); foes.forEach(e => disposeObject(e.mesh)); foes = [];
+    ammo=MAGAZINE;heat=0;overheated=false;reloadRemaining=0;damageFlash=damageDirectionTime=hitTime=warningBeep=0;tutorialActive=false;
+    failureReason='Drone düşürüldü. Görevi yeniden deneyebilir veya hangarda zırhı geliştirebilirsin.';combatLog=freshCombatLog();sessionReport=null;
+    $('tutorialCard').classList.add('hidden');
+    flightLog={distance:0,turn:0,height:0,shots:0,reloads:0,missiles:0};
+    if (player) disposeObject(player);
+    player = makeDrone(); player.position.set(0,isChase()?14:8,isChase()?400:35);scene.add(player);motorHP=Array(player.userData.rotors.length).fill(100);collisionCooldown=0;collisionCount=0;landingAssist=-1;repairTimer=0;repairCount=0;padCooldowns=[0,0,0];chaseCheckpoint=0;
+    score = missionKills = 0; hp = maxHP(); boost = flightStats().boost; clock = missionTime = 0; bossSpawned = false; spawnClock = 1.4;
+    missileCooldown = 0; pendingMissile = false; lockTarget = null; lockTime = 0;
+    yaw = targetYaw = 0; altitudeTarget = isChase()?14:8; velocity.set(0, 0, 0); noticeTime = 0;
+    ui.notice.classList.remove('on'); ui.target.classList.add('hidden');
+    setupObjectives();camera.position.copy(player.position).add(V(0, 6, 13)); updateCamera(1); updateHUD();updateCombatHUD(0);
+  }
+  function startMission(id = selectedMission,training=false) {
+    if (id > profile.unlockedMission || !MISSIONS[id-1]) return false;
+    endlessActive=false;$('endlessHUD')?.classList.add('hidden');practiceActive=false;sessionDifficulty=profile.settings.difficulty;missionMap=profile.selectedMap;applyMap(missionMap);selectedMission = id; mission = MISSIONS[id-1]; reset(); running = true; hidePanel();initAudio();last=performance.now();
+    for(let i=0;i<Math.min(Math.max(2,3+difficulty().count),enemyLimit());i++) spawnEnemy();
+    beginTutorial(training);ui.missionStrip.classList.remove('hidden');
+    notify(`${TYPE_LABELS[mission.kind]}: ${missionDescription(mission)}`);
+    return true;
+  }
+  function pauseMission() {
+    if(!running) return;
+    running=false;clearInputs();pendingMissile=false;showPanel('pause');
+  }
+  function resumeMission() {
+    if(activeView!=='pause' || !mission) return;
+    hidePanel();running=true;last=performance.now();
+  }
+  function endGame(reason='Drone düşürüldü. Görevi yeniden deneyebilir veya hangarda zırhı geliştirebilirsin.') {
+    if (!running) return;
+    if(practiceActive){finishPractice();return;}
+    if(endlessActive){finishEndless();return;}
+    running=false;clearInputs();pendingMissile=false;
+    storeMissionReport(false);failureReason=reason;showPanel('defeat');
+  }
+  function completeMission() {
+    if(!running || !mission) return;
+    if(practiceActive){finishPractice();return;}
+    if(isChase()){completeChase();return;}
+    running=false;clearInputs();pendingMissile=false;
+    const previous=profile.completed[mission.id], stars=1+Number(hp>=maxHP()*.6)+Number(missionTime<=mission.goal*25+50);
+    const credits=previous?Math.floor(mission.reward*.35):mission.reward;
+    const xp=mission.xp+mission.goal*8;
+    const oldRank=pilotLevel();
+    profile.credits+=credits;profile.xp+=xp;
+    profile.bestScore=Math.max(profile.bestScore,score);
+    profile.completed[mission.id]={stars:Math.max(previous?.stars||0,stars),score:Math.max(previous?.score||0,score)};
+    profile.unlockedMission=Math.max(profile.unlockedMission,Math.min(MISSIONS.length,mission.id+1));
+    missionResult={credits,xp,stars,rankUp:pilotLevel()>oldRank,
+      message:`${mission.name} tamamlandı. ${mission.kind==='race'?`${gateIndex} kapı geçildi.`:missionAsset?`${mission.kind==='defend'?'Üs':'Konvoy'} korundu. ${missionKills} düşman düşürüldü.`:`${missionKills} düşman etkisiz hâle getirildi.`}`};
+    storeMissionReport(true);sound(700,.25,.05);showPanel('success');
+  }
+  function damagePlayer(amount,source=null) {
+    if(!running||practiceActive)return;damageMotor(Math.min(hp,Math.max(0,amount)),source);combatLog.damageTaken+=Math.min(hp,Math.max(0,amount));hp=Math.max(0,hp-amount);damageFlash=Math.min(.8,damageFlash+.42);damageDirectionTime=1.25;
+    if(source)damageAngle=indicatorAngle(source);noiseSound('metal',.8);kickCamera(player.position,.22);if(!hp){explosion(player.position,1.2);endGame();}
+  }
+  function destroyEnemy(enemy) {
+    if(!running || enemy.dead) return;
+    enemy.dead=true;missionKills++;
+    const endlessScore=endlessActive?Math.round(1+(endlessLevel-1)*.08):1;score+=(enemy.type==='boss'?1500:enemy.type==='armored'?250:enemy.type==='striker'?180:150)*endlessScore;
+    explosion(enemy.mesh.position,enemy.type==='boss'?1.8:enemy.type==='armored'?1.15:1);
+    if(lockTarget===enemy){lockTarget=null;lockTime=0;}
+    if(endlessActive&&missionKills>=mission.goal){completeEndlessWave();return;}
+    if(['combat','boss'].includes(mission.kind)&&missionKills>=mission.goal){completeMission();return;}
+    if(mission.boss && missionKills===mission.goal-1){
+      for(const foe of foes) if(!foe.dead) foe.dead=true;
+      spawnClock=2.2;notify('Lider drone yaklaşıyor');
+    }else spawnClock=Math.min(spawnClock,1.1);
+  }
+  function spawnEnemy() {
+    if(practiceActive)return spawnPracticeTarget();
+    if(!mission||mission.kind==='race'||(['combat','boss'].includes(mission.kind)&&missionKills>=mission.goal))return false;
+    const bossPhase=mission.boss && missionKills>=mission.goal-1;
+    if(endlessActive){const regularCap=mission.boss?mission.goal-1:mission.goal;if(!bossPhase&&endlessSpawned>=regularCap)return false;if(bossPhase&&bossSpawned)return false;}
+    if(bossPhase&&bossSpawned)return false;
+    if(foes.filter(e=>!e.dead).length>= (bossPhase?1:enemyLimit()))return false;
+    let type='striker';const roll=Math.random();
+    if(bossPhase){type='boss';bossSpawned=true;}
+    else if(mission.id>=3&&roll<Math.min(.3,.08+mission.id*.02))type='armored';
+    else if(roll<.48)type='scout';
+    const angle=yaw+(isChase()?Math.PI:0)+rand(-1.3,1.3);
+    const radius=isChase()?rand(85,125):type==='boss'?57:rand(34,58);
+    const pos=player.position.clone().add(V(-Math.sin(angle)*radius,rand(-3,4),-Math.cos(angle)*radius));
+    const spawnBoundary=isChase()?535:88;pos.x=clamp(pos.x,-spawnBoundary,spawnBoundary);pos.z=clamp(pos.z,-spawnBoundary,spawnBoundary);pos.y=clamp(pos.y,4,flightCeiling()-5);
+    if(pos.distanceTo(player.position)<22){
+      const inward=V(-player.position.x,0,-player.position.z).normalize().multiplyScalar(42);
+      pos.copy(player.position).add(inward);pos.y=clamp(player.position.y+3,4,28);
+    }
+    const radiusHit=type==='boss'?3.6:type==='armored'?2.45:1.8;
+    let hitpoints=type==='boss'?20+mission.id*2:type==='armored'?7+Math.floor(mission.id/3):
+      type==='scout'?2+Math.floor(mission.id/4):4+Math.floor(mission.id/4);
+    if(endlessActive)hitpoints=Math.max(2,Math.round(hitpoints*endlessHealthScale(endlessLevel)*(type==='boss'?1.45:1)));
+    for(const obstacle of activeColliders)if(obstacle.clone().expandByScalar(4).containsPoint(pos))pos.y=Math.min(flightCeiling()-3,obstacle.max.y+7);
+    const enemy={lastSeen:player.position.clone(),unseen:0,mesh:makeDrone(true,type),hp:hitpoints,maxHP:hitpoints,radius:radiusHit,type,dead:false,
+      speed:(type==='boss'?4.8:type==='armored'?5.2:type==='scout'?10:7.2)*(endlessActive?endlessSpeedScale(endlessLevel):1),
+      velocity:V(),fire:rand(type==='boss'?2.9:4.5,6.5)*(endlessActive?endlessFireScale(endlessLevel):1),phase:angle,orbit:Math.random()<.5?-1:1,
+      state:'attack',stateTime:rand(2,5),evadeCooldown:0,evadeRemaining:0,evadeDirection:V(),missileTimer:rand(12,19),smokeTime:0,attacksAsset:!!missionAsset&&Math.random()<.42};
+    enemy.mesh.scale.setScalar(type==='boss'?(endlessActive?2.05:1.85):type==='armored'?1.22:type==='scout'?.87:1);
+    enemy.mesh.position.copy(pos);scene.add(enemy.mesh);foes.push(enemy);if(endlessActive)endlessSpawned++;return true;
+  }
+  function animateRotors(drone, dt, fast = false) {
+    drone.userData.rotors.forEach((r, i) => { r.rotation.y += dt * (fast ? 95 : 70) * (i % 2 ? -1 : 1) * (drone===player?(motorHP[i]<=0?0:.28+.72*motorHP[i]/100):1); });
+  }
+  function updatePlayer(dt) {
+    const previousPosition=player.position.clone();
+    const forward = clamp((pressed('forward') ? 1 : 0) - (pressed('backward') ? 1 : 0) - joy.y, -1, 1);
+    const turn = clamp((pressed('left') ? 1 : 0) - (pressed('right') ? 1 : 0) - joy.x, -1, 1);
+    const fast = pressed('boost') && Math.abs(forward) > .05 && boost > 0;
+    const oldYaw=yaw;targetYaw += turn * 1.9 * dt; yaw = damp(yaw, targetYaw, 15, dt);flightLog.turn+=Math.abs(yaw-oldYaw);
+    const specs=flightStats();boost=clamp(boost+(fast?-30:17)*dt,0,specs.boost);
+    if(touchBoost&&boost<=0){touchBoost=false;$('touchBoost').classList.remove('active');$('touchBoost').setAttribute('aria-pressed','false');$('stick').classList.remove('boosting');}
+    if(landingAssist>=0&&(Math.abs(forward)>.1||Math.abs(turn)>.1||ascend||descend)){landingAssist=-1;repairTimer=0;altitudeTarget=Math.max(altitudeTarget,5);}
+    const power=motorPower(),desired=heading().multiplyScalar(forward*(fast?specs.fast:specs.speed)*power);
+    if(landingAssist>=0){const pad=PAD_POINTS[landingAssist];desired.set(pad.x-player.position.x,0,pad.z-player.position.z).multiplyScalar(.9);if(desired.length()>6)desired.setLength(6);const obstacle=firstObstacle(player.position,pad.clone().setY(player.position.y),1.5);altitudeTarget=obstacle?Math.min(flightCeiling()-3,obstacle.box.max.y+3):desired.length()<2?-6.65:Math.max(player.position.y,3);if(obstacle&&player.position.y<obstacle.box.max.y+2.8)desired.set(0,0,0);}
+    velocity.x=damp(velocity.x,desired.x,5.6,dt);velocity.z=damp(velocity.z,desired.z,5.6,dt);
+    const bound=flightBoundary();player.position.x=clamp(player.position.x+velocity.x*dt,-bound,bound);player.position.z=clamp(player.position.z+velocity.z*dt,-bound,bound);
+    altitudeTarget=clamp(altitudeTarget+((ascend?1:0)-(descend?1:0))*15*dt,CFG.minAltitude,flightCeiling());
+    const oldHeight=player.position.y,vertical=clamp((altitudeTarget-player.position.y)*2.6,landingAssist>=0?-2.2:-9*power,9*power);
+    velocity.y=damp(velocity.y,vertical,8,dt);player.position.y+=velocity.y*dt;resolvePlayerCollision(previousPosition,dt);
+    player.rotation.y = yaw;
+    const body = player.userData.body;
+    body.rotation.x = damp(body.rotation.x, -forward * .11, 7, dt);
