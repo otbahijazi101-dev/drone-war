@@ -1,46 +1,227 @@
-    const motors=!enemy&&model.shape==='hex'?Array.from({length:6},(_,i)=>V(Math.cos(i*Math.PI/3)*2.05,.08,Math.sin(i*Math.PI/3)*1.85)):[V(-1.52,.08,-1.23),V(-1.52,.08,1.23),V(1.52,.08,-1.23),V(1.52,.08,1.23)];
+  const ENEMY_PALETTE = {scout:0x64695f,striker:0x50574a,armored:0x414746,boss:0x3d403b};
+  function makeDrone(enemy = false, type = 'scout', modelId=activeDroneId()) {
+    const root = new T.Group(), body = new T.Group();
+    root.add(body);
+
+    const model = droneById(modelId), paint = dronePaint(modelId);
+    const finish = {factory:[.64,.32],solid:[.42,.18],metallic:[.23,.82],matte:[.96,.03]}[paint.finish];
+    const shellColor = enemy ? ENEMY_PALETTE[type] : paint.color;
+    const shell = steel(shellColor, enemy ? .66 : finish[0], enemy ? .34 : finish[1]);
+    const shellDark = steel(enemy ? 0x464f54 : 0x384147, .82, .10);
+    const carbon = steel(0x242b2f, .84, .16), carbonSoft = steel(0x2d363a, .78, .14);
+    const alloy = steel(0x7b868b, .32, .86), alloySoft = steel(0x606b70, .46, .62);
+    const rubber = steel(0x12191c, .98, 0), glass = steel(0x1c4155, .12, .72);
+    const trim = steel(enemy ? 0xea785b : paint.led, .34, .46);
+    const red = new T.MeshBasicMaterial({color: enemy ? 0xf16449 : 0xb03a30});
+    const green = new T.MeshBasicMaterial({color: enemy ? 0xff9a73 : paint.led});
+
+    root.userData.modelId = enemy ? null : model.id;
+    root.userData.shell = shell;
+    root.userData.paint = paint;
+    root.userData.rotors = [];
+
+    const enemyScale = {scout:.92, striker:1.0, armored:1.13, boss:1.46}[type] || 1;
+    const profileScale = enemy ? enemyScale : model.span;
+    const bossLike = enemy && type === 'boss';
+    const heavy = enemy && (type === 'armored' || type === 'boss');
+    const fastFrame = enemy && (type === 'scout' || type === 'striker');
+
+    // Core fuselage
+    const belly = box(body, shellDark, 1.28, .32, 1.96, 0, -.08, .04);
+    const spine = box(body, shell, 1.10, .26, 1.56, 0, .18, .14);
+    const deck = box(body, carbonSoft, .98, .06, 1.26, 0, .35, .12);
+    deck.rotation.x = .03;
+    const canopyBase = box(body, shell, .86, .24, .86, 0, .13, -.54);
+    canopyBase.rotation.x = -.14;
+    const nose = box(body, shell, .76, .21, .72, 0, .02, -1.08);
+    nose.rotation.x = -.26;
+    const dorsal = box(body, shellDark, .42, .17, .52, 0, .43, -.05);
+    dorsal.rotation.x = -.1;
+    const battery = box(body, alloySoft, .52, .18, .68, 0, .08, .58);
+    battery.rotation.x = .05;
+    const cameraBall = mesh(body, new T.SphereGeometry(.29, 16, 12), carbon, 0, -.22, -1.02);
+    const gimbalRing = mesh(body, new T.TorusGeometry(.21, .03, 8, 20), alloy, 0, -.22, -1.02);
+    gimbalRing.rotation.y = Math.PI / 2;
+    const lensMesh = mesh(body, new T.CylinderGeometry(.145, .18, .18, 18), glass, 0, -.24, -1.26);
+    lensMesh.rotation.x = Math.PI / 2;
+    const glassCap = mesh(body, new T.SphereGeometry(.12, 12, 10), glass, 0, -.24, -1.35);
+    glassCap.scale.z = .62;
+
+    // Side panels and vents
+    for (const side of [-1, 1]) {
+      const s = side;
+      const cheek = box(body, shell, .16, .27, .92, s * .56, .07, -.12);
+      cheek.rotation.z = s * .2;
+      const rail = box(body, alloySoft, .10, .07, 1.24, s * .66, -.04, .06);
+      rail.rotation.z = s * .05;
+      const vent = box(body, carbon, .12, .05, .22, s * .40, .31, -.18);
+      vent.rotation.z = s * .06;
+      const sideFin = box(body, carbonSoft, .05, .28, .42, s * .47, .25, .44);
+      sideFin.rotation.z = s * .2;
+
+      // weapon barrels
+      const barrel = mesh(body, new T.CylinderGeometry(.068, .095, 1.34, 14), carbon, s * .77, -.23, -1.28);
+      barrel.rotation.x = Math.PI / 2;
+      const muzzle = mesh(body, new T.CylinderGeometry(.11, .13, .24, 14), alloy, s * .77, -.23, -1.76);
+      muzzle.rotation.x = Math.PI / 2;
+      const emitter = mesh(body, new T.CylinderGeometry(.055, .055, .08, 12), trim, s * .77, -.23, -1.90);
+      emitter.rotation.x = Math.PI / 2;
+
+      const shoulder = box(body, alloy, .16, .10, .20, s * .49, .23, -.54);
+      shoulder.rotation.z = s * .15;
+    }
+
+    // Top rails / antenna / sensor details
+    box(body, alloy, .12, .025, .94, -.22, .47, .10);
+    box(body, alloy, .12, .025, .94,  .22, .47, .10);
+    mesh(body, new T.CylinderGeometry(.03, .03, .48, 10), alloy, .20, .64, .59);
+    const antennaTip = mesh(body, new T.SphereGeometry(.05, 10, 8), trim, .20, .88, .64);
+    const rearSensor = mesh(body, new T.SphereGeometry(.09, 10, 8), trim, 0, .35, .80);
+
+    // Rotor layout
+    const motors = (!enemy && model.shape === 'hex')
+      ? Array.from({length:6},(_,i)=>V(Math.cos(i*Math.PI/3)*2.04,.10,Math.sin(i*Math.PI/3)*1.84))
+      : [V(-1.52,.10,-1.22),V(-1.52,.10,1.22),V(1.52,.10,-1.22),V(1.52,.10,1.22)];
+
     for (const baseMotor of motors) {
-      const motor=baseMotor.clone();if(!enemy)motor.multiplyScalar(model.span);const sx=Math.sign(motor.x)||1,sz=Math.sign(motor.z)||1;
-      strut(body, V(sx * .43, -.02, sz * .38), motor, .11, carbon);
-      strut(body, V(sx * .44, .04, sz * .44), motor.clone().add(V(0, .06, 0)), .028, alloy);
-      mesh(body, new T.CylinderGeometry(.20, .22, .28, 12), alloy, motor.x, .13, motor.z);
-      mesh(body, new T.CylinderGeometry(.13, .13, .10, 10), carbon, motor.x, .32, motor.z);
-      const rotor = new T.Group(); rotor.position.set(motor.x, .39, motor.z); body.add(rotor);
-      if(!enemy&&paint.blades===3){
-        for(let i=0;i<3;i++){const arm=new T.Group();arm.rotation.y=i*Math.PI*2/3;rotor.add(arm);box(arm,carbon,.8,.027,.14,.4,0,0);}
-      }else{const blade=box(rotor,carbon,1.66,.025,.12);blade.rotation.y=.1;}
-      rotor.userData.blades=!enemy?paint.blades:2;
-      const blur = new T.MeshBasicMaterial({color: 0x263335, transparent: true, opacity: .11,
-        side: T.DoubleSide, depthWrite: false});
-      const disk = mesh(rotor, new T.CircleGeometry(.84, 24), blur, 0, .007, 0);
-      disk.rotation.x = -Math.PI / 2; disk.castShadow = false;
+      const motor = baseMotor.clone();
+      motor.multiplyScalar(profileScale);
+      const sx = Math.sign(motor.x) || 1, sz = Math.sign(motor.z) || 1;
+
+      // Dual arm structure
+      const innerAnchor = V(sx * .36, .02, sz * .34);
+      const outerAnchor = V(sx * .50, .16, sz * .46);
+      strut(body, innerAnchor, motor.clone().add(V(0, -.03, 0)), .12, carbon);
+      strut(body, outerAnchor, motor.clone().add(V(0, .08, 0)), .05, alloySoft);
+      strut(body, V(sx * .18, .22, sz * .10), motor.clone().add(V(0, .02, 0)), .026, alloy);
+
+      const cowl = mesh(body, new T.CylinderGeometry(.25, .29, .24, 16), alloy, motor.x, .14, motor.z);
+      const hub = mesh(body, new T.CylinderGeometry(.18, .18, .12, 14), carbon, motor.x, .31, motor.z);
+      const cap = mesh(body, new T.CylinderGeometry(.10, .14, .07, 12), trim, motor.x, .40, motor.z);
+
+      const rotor = new T.Group();
+      rotor.position.set(motor.x, .41, motor.z);
+      body.add(rotor);
+      if (!enemy && paint.blades === 3) {
+        for (let i = 0; i < 3; i++) {
+          const arm = new T.Group();
+          arm.rotation.y = i * Math.PI * 2 / 3;
+          rotor.add(arm);
+          const blade = box(arm, carbon, .85, .028, .14, .42, 0, 0);
+          const tip = box(arm, trim, .13, .02, .05, .80, 0, 0);
+          tip.rotation.y = .04;
+        }
+      } else {
+        const blade = box(rotor, carbon, 1.72, .026, .13);
+        blade.rotation.y = .09;
+        const blade2 = box(rotor, carbon, 1.72, .026, .13);
+        blade2.rotation.y = Math.PI / 2 + .09;
+      }
+      rotor.userData.blades = !enemy ? paint.blades : 2;
+
+      const blur = new T.MeshBasicMaterial({color: 0x2d3a3f, transparent: true, opacity: bossLike ? .14 : .11, side: T.DoubleSide, depthWrite: false});
+      const disk = mesh(rotor, new T.CircleGeometry(bossLike ? .95 : .86, 28), blur, 0, .006, 0);
+      disk.rotation.x = -Math.PI / 2;
+      disk.castShadow = false;
       root.userData.rotors.push(rotor);
-      mesh(body, new T.SphereGeometry(.075, 7, 6), sx < 0 ? red : green, motor.x, -.10, motor.z);
-    }
-    for (const x of [-.66, .66]) {
-      strut(body, V(x, -.19, -.53), V(x * 1.25, -.86, -.53), .04, alloy);
-      strut(body, V(x, -.19, .58), V(x * 1.25, -.86, .58), .04, alloy);
-      strut(body, V(x * 1.25, -.87, -.93), V(x * 1.25, -.87, .94), .055, rubber);
-    }
-    strut(body, V(.18, .5, .58), V(.21, 1.03, .64), .018, carbon);
-    if(!enemy){
-      const trim=steel(paint.led,.4,.35);
-      if(model.shape==='racer'||model.shape==='wing'){
-        const wing=box(body,shell,model.shape==='wing'?3.4:2.5,.08,.75,0,.02,.5);wing.rotation.x=.05;
-        for(const side of [-1,1]){const fin=box(body,carbon,.07,.6,.55,side*.58,.46,.72);fin.rotation.z=side*.23;}
+
+      // navigation LED under each arm
+      mesh(body, new T.SphereGeometry(.08, 8, 6), sx < 0 ? red : green, motor.x, -.08, motor.z);
+      if (heavy || (!enemy && model.shape === 'guard')) {
+        const guard = mesh(body, new T.TorusGeometry(.89 * profileScale / Math.max(profileScale, .0001), .05, 8, 30), alloySoft, motor.x, .34, motor.z);
+        guard.rotation.x = -Math.PI / 2;
       }
-      if(model.shape==='guard')for(const motor of motors){const ring=mesh(body,new T.TorusGeometry(.87,.055,6,32),alloy,motor.x*model.span,.35,motor.z*model.span);ring.rotation.x=-Math.PI/2;}
-      if(model.shape==='attack'||model.shape==='hex')for(const side of [-1,1]){
-        const pod=mesh(body,new T.CylinderGeometry(.18,.18,1.05,10),shell,side*.57,-.46,.15);pod.rotation.x=Math.PI/2;
+    }
+
+    // Landing gear
+    for (const x of [-.72, .72]) {
+      strut(body, V(x, -.16, -.56), V(x * 1.18, -.96, -.60), .05, alloy);
+      strut(body, V(x, -.16,  .62), V(x * 1.18, -.96,  .66), .05, alloy);
+      const ski = strut(body, V(x * 1.18, -.98, -.98), V(x * 1.18, -.98, .98), .06, rubber);
+    }
+    const frontCross = strut(body, V(-.82, -.66, -.92), V(.82, -.66, -.92), .03, alloySoft);
+    const rearCross  = strut(body, V(-.82, -.66,  .92), V(.82, -.66,  .92), .03, alloySoft);
+
+    // Type-specific forms for better silhouette
+    if (enemy) {
+      if (type === 'scout') {
+        const tail = box(body, shellDark, .34, .10, .92, 0, .16, .92);
+        tail.rotation.x = .14;
+        for (const side of [-1,1]) {
+          const fin = box(body, carbon, .04, .34, .34, side * .22, .28, .86);
+          fin.rotation.z = side * .28;
+        }
       }
-      if(activeUpgrades().hull>0){for(const side of [-1,1])box(body,alloy,.07,.24,1.3,side*.79,.06,.1);}
-      box(body,trim,.48,.03,.09,0,.57,-.10);
+      if (type === 'striker') {
+        for (const side of [-1,1]) {
+          const pod = mesh(body, new T.CylinderGeometry(.18, .22, 1.02, 12), shellDark, side * .60, -.36, .12);
+          pod.rotation.x = Math.PI / 2;
+          const tip = mesh(body, new T.ConeGeometry(.10, .22, 10), trim, side * .60, -.36, -.40);
+          tip.rotation.x = -Math.PI / 2;
+        }
+      }
+      if (type === 'armored') {
+        box(body, shellDark, 1.44, .18, 1.44, 0, .22, .06);
+        box(body, alloySoft, 1.12, .12, .52, 0, -.26, -.26);
+        for (const side of [-1,1]) {
+          const plate = box(body, shellDark, .10, .40, 1.18, side * .70, .04, .06);
+          plate.rotation.z = side * .10;
+        }
+      }
+      if (type === 'boss') {
+        box(body, shellDark, 1.72, .22, 1.86, 0, .28, .04);
+        const ring = mesh(body, new T.TorusGeometry(1.04, .08, 8, 42), trim, 0, .14, -.04);
+        ring.rotation.x = Math.PI / 2;
+        for (const side of [-1,1]) {
+          const spineFin = box(body, shellDark, .08, .72, .62, side * .32, .60, .24);
+          spineFin.rotation.z = side * .18;
+          const sideCannon = mesh(body, new T.CylinderGeometry(.16,.22,1.26,14), alloySoft, side * 1.02, -.08, -.12);
+          sideCannon.rotation.x = Math.PI / 2;
+        }
+        const crown = mesh(body, new T.ConeGeometry(.20, .34, 10), trim, 0, .78, -.06);
+      }
+    } else {
+      if (model.shape === 'racer' || model.shape === 'wing') {
+        const wing = box(body, shell, model.shape === 'wing' ? 3.45 : 2.55, .08, .76, 0, .02, .48);
+        wing.rotation.x = .06;
+        for (const side of [-1,1]) {
+          const fin = box(body, carbon, .07, .64, .56, side * .60, .47, .74);
+          fin.rotation.z = side * .24;
+          const winglet = box(body, trim, .05, .20, .22, side * 1.48, .10, .54);
+          winglet.rotation.z = side * .18;
+        }
+      }
+      if (model.shape === 'guard') {
+        for (const motor of motors) {
+          const p = motor.clone().multiplyScalar(profileScale);
+          const ring = mesh(body, new T.TorusGeometry(.90, .055, 8, 34), alloySoft, p.x, .35, p.z);
+          ring.rotation.x = -Math.PI / 2;
+        }
+        box(body, alloySoft, .92, .16, .38, 0, -.28, -.20);
+      }
+      if (model.shape === 'attack' || model.shape === 'hex') {
+        for (const side of [-1,1]) {
+          const pod = mesh(body, new T.CylinderGeometry(.18, .18, 1.08, 12), shellDark, side * .58, -.45, .16);
+          pod.rotation.x = Math.PI / 2;
+          const vent = mesh(body, new T.CylinderGeometry(.10, .10, .16, 12), trim, side * .58, -.45, -.34);
+          vent.rotation.x = Math.PI / 2;
+        }
+      }
+      if (activeUpgrades().hull > 0) {
+        for (const side of [-1,1]) {
+          box(body, alloySoft, .08, .26, 1.32, side * .80, .08, .08);
+          box(body, trim, .04, .10, .18, side * .88, .24, -.12);
+        }
+      }
+      box(body, trim, .52, .03, .09, 0, .57, -.10);
       body.scale.set(...model.bodyScale);
     }
-    root.userData.body = body; root.userData.cameraBall = cameraBall;
+
+    if (enemy && bossLike) root.scale.setScalar(1.08);
+    root.userData.body = body;
+    root.userData.cameraBall = cameraBall;
     return root;
-  }
-  function disposeObject(object) {
+  }  function disposeObject(object) {
     if(object.parent)object.parent.remove(object);
     const gs = new Set(), ms = new Set();
     object.traverse(o => { if (o.geometry) gs.add(o.geometry);
