@@ -244,7 +244,7 @@
   let flightLog={distance:0,turn:0,height:0,shots:0,reloads:0,missiles:0};
   let primaryHeld = false, primaryPointer = null, primaryCooldown = 0, muzzleSide = 1;
   const maxHP = () => flightStats().hp;
-  const missileReload = () => flightStats().reload;
+  const missileReload = () => 2;
   const targetLockTime = () => flightStats().lock;
   let lockTarget = null, lockTime = 0, last = 0, noticeTime = 0, radarClock = 0;
   let yaw = 0, targetYaw = 0, altitudeTarget = 8;
