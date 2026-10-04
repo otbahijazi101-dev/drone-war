@@ -306,7 +306,7 @@
     const d=droneById(id);
     return {hp:d.hp+upgrades.hull*20,damage:d.damage+upgrades.weapon,speed:d.speed+upgrades.motor*1.8,
       fast:d.fast+upgrades.motor*2.8,boost:d.boost+upgrades.motor*8,
-      missile:d.missile+upgrades.missile*4,reload:Math.max(4.5,d.reload-upgrades.missile*.7),lock:Math.max(.34,d.lock-upgrades.missile*.06)};
+      missile:d.missile+upgrades.missile*4,reload:2,lock:Math.max(.34,d.lock-upgrades.missile*.06)};
   }
   const ownsDrone=id=>profile.ownedDrones.includes(id);
   const dronePaint=id=>cleanPaint(id,profile.paintJobs[id]);
