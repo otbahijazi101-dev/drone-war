@@ -349,7 +349,7 @@
     r.mesh.visible=!r.dead;if(r.marker?.material)r.marker.material.color.setHex(onlineRemoteColor(r.team,r.kind));return r;
   }
   function updateOnlineRemotes(dt){if(!onlineActive)return;const now=performance.now();for(const [id,r] of onlineRemotes){if(now-r.lastSeen>7000&&r.kind!=='boss'){disposeObject(r.mesh);onlineRemotes.delete(id);continue;}if(!r.mesh.visible)continue;r.mesh.position.lerp(r.targetPos,1-Math.exp(-12*dt));r.mesh.quaternion.slerp(r.targetQuat,1-Math.exp(-12*dt));animateRotors(r.mesh,dt,true);}}
-  function onlineSnapshot(){if(!player)return null;return {p:[player.position.x,player.position.y,player.position.z],q:[player.quaternion.x,player.quaternion.y,player.quaternion.z,player.quaternion.w],v:[velocity.x,velocity.y,velocity.z],yaw,hp,dead:onlineDead,team:onlineTeam,kind:'player'};}
+  function onlineSnapshot(){if(!player)return null;return {p:[player.position.x,player.position.y,player.position.z],q:[player.quaternion.x,player.quaternion.y,player.quaternion.z,player.quaternion.w],v:[velocity.x,velocity.y,velocity.z],yaw,hp,maxHP:maxHP(),dead:onlineDead,team:onlineTeam,kind:'player'};}
   function onlineBossSnapshot(){if(!onlineActive||onlineMode!=='coop_boss'||!onlineIsHost)return null;const b=foes.find(e=>!e.dead&&e.type==='boss');if(!b)return null;return {p:[b.mesh.position.x,b.mesh.position.y,b.mesh.position.z],q:[b.mesh.quaternion.x,b.mesh.quaternion.y,b.mesh.quaternion.z,b.mesh.quaternion.w],hp:b.hp,maxHP:b.maxHP,dead:b.dead,team:9,kind:'boss',phase:b.bossPhase||1};}
   function onlineApplyBossDamage(amount){if(!onlineActive||onlineMode!=='coop_boss'||!onlineIsHost)return false;const b=foes.find(e=>!e.dead&&e.type==='boss');if(!b)return false;const dmg=Math.max(.2,Math.min(18,Number(amount)||0));b.hp=Math.max(0,b.hp-dmg);b.hitReaction=.22;hitTime=.15;enemyImpact(b,b.mesh.position,heading());if(b.hp<=0)destroyEnemy(b);return true;}
   function onlineSetLocalHP(value){if(!onlineActive)return;const next=clamp(Number(value)||0,0,maxHP());if(next<hp){damageFlash=Math.min(.8,damageFlash+.34);noiseSound('metal',.55);kickCamera(player.position,.15);}hp=next;if(hp<=0&&!onlineDead){onlineDead=true;clearInputs();explosion(player.position,1.05);}}
@@ -358,7 +358,7 @@
     clearOnlineRemotes();endlessActive=false;practiceActive=false;onlineActive=true;onlineMode=cfg.mode||'ffa';onlineLocalId=String(cfg.playerId||'');onlineTeam=cfg.team??null;onlineIsHost=!!cfg.isHost;onlineDead=false;missionMap=MAPS.some(m=>m.id===cfg.map)?cfg.map:'base';applyMap(missionMap);
     mission={id:0,name:onlineMode==='2v2'?'ONLINE · 2v2':onlineMode==='coop_boss'?'ONLINE · CO-OP BOSS':'ONLINE · FFA',goal:9999,maxEnemies:0,spawnInterval:999,reward:0,xp:0,boss:false,kind:'combat',duration:0};
     reset();onlineActive=true;onlineMode=cfg.mode||'ffa';onlineLocalId=String(cfg.playerId||'');onlineTeam=cfg.team??null;onlineIsHost=!!cfg.isHost;running=true;hidePanel();initAudio();last=performance.now();ui.missionStrip.classList.remove('hidden');
-    if(onlineMode==='coop_boss'&&onlineIsHost){mission={...MISSIONS[3],name:'ONLINE · CO-OP BOSS'};missionKills=mission.goal-1;bossSpawned=false;spawnEnemy();const b=foes.find(e=>!e.dead&&e.type==='boss');if(b){b.hp=b.maxHP=220;b.speed*=1.08;}}
+    if(onlineMode==='coop_boss'&&onlineIsHost){mission={id:10,name:'ONLINE · CO-OP BOSS',goal:1,maxEnemies:1,spawnInterval:999,reward:0,xp:0,boss:true,kind:'boss',duration:0};missionKills=0;bossSpawned=false;spawnEnemy();const b=foes.find(e=>!e.dead&&e.type==='boss');if(b){b.hp=b.maxHP=220;b.speed*=1.08;}}
     notify(onlineMode==='coop_boss'?'CO-OP BOSS · Takım halinde saldır':'ONLINE MAÇ · Rakip dronlara kilitlen');return true;
   }
   function stopOnlineArena(){if(!onlineActive)return;onlineActive=false;onlineDead=false;onlineMode='';onlineLocalId='';onlineTeam=null;onlineIsHost=false;clearOnlineRemotes();clearInputs();running=false;mission=null;reset();showPanel('home');}
@@ -578,7 +578,8 @@
     return true;
   }
   function pauseMission() {
-    if(!running) return;
+    if(!running)return;
+    if(onlineActive){clearInputs();pendingMissile=false;window.DroneArenaOnlineNet?.openPause?.();return;}
     running=false;clearInputs();pendingMissile=false;showPanel('pause');
   }
   function resumeMission() {
