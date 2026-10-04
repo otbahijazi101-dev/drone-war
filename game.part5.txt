@@ -612,7 +612,7 @@
   }
   function damagePlayer(amount,source=null) {
     if(!running||practiceActive)return;damageMotor(Math.min(hp,Math.max(0,amount)),source);combatLog.damageTaken+=Math.min(hp,Math.max(0,amount));hp=Math.max(0,hp-amount);damageFlash=Math.min(.8,damageFlash+.42);damageDirectionTime=1.25;
-    if(source)damageAngle=indicatorAngle(source);noiseSound('metal',.8);kickCamera(player.position,.22);if(!hp){explosion(player.position,1.2);endGame();}
+    if(source)damageAngle=indicatorAngle(source);noiseSound('metal',.8);kickCamera(player.position,.22);if(!hp){explosion(player.position,1.2);if(onlineActive){onlineDead=true;clearInputs();window.DroneArenaOnlineNet?.onLocalEnvironmentalDeath?.();return;}endGame();}
   }
   function destroyEnemy(enemy) {
     if(!running || enemy.dead) return;
