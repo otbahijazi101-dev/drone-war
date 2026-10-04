@@ -1,0 +1,32 @@
+(()=>{
+'use strict';
+
+const SUPABASE_URL='https://kvyxvauodcjgthvvnrpi.supabase.co';
+const SUPABASE_KEY='sb_publishable_i0EFQJLR1CMIjdE7-03KMQ_JCI9rndo';
+const API=SUPABASE_URL+'/functions/v1/online-api';
+const STORE='droneWarOnlineIdentityV1';
+const MODE_LABEL={ffa:'FREE FOR ALL','2v2':'2v2 TAKIM SAVAŞI',coop_boss:'CO-OP BOSS'};
+const MAP_LABEL={base:'Hava Üssü',city:'Şehir',ridge:'Dağ Sırtı',night:'Gece Üssü'};
+const SCORE_LIMIT={ffa:10,'2v2':15};
+const MATCH_SECONDS=480;
+const q=id=>document.getElementById(id);
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const oldPhone=/iP(hone|od)/.test(navigator.userAgent)&&Math.max(screen.width||0,screen.height||0)<=736;
+
+const state={
+  identity:null,room:null,friends:[],view:'home',error:'',
+  sb:null,channel:null,inMatch:false,isHost:false,team:null,
+  kills:{},deaths:{},hp:{},maxHp:{},dead:new Set(),startedAt:0,result:null,
+  pollTimer:null,stateTimer:null,scoreTimer:null,reconnectTimer:null,matchEnded:false
+};
+try{state.identity=JSON.parse(localStorage.getItem(STORE)||'null');}catch(_){}
+
+const style=document.createElement('style');
+style.textContent=`
+.dw-online{position:fixed;inset:0;z-index:10030;display:none;align-items:center;justify-content:center;padding:12px;background:radial-gradient(circle at 50% 15%,#173a3ccc,#07120ff2 62%);backdrop-filter:blur(10px);box-sizing:border-box}.dw-online.open{display:flex}
+.dw-card{width:min(920px,100%);max-height:94vh;overflow:auto;background:#101d19f7;border:1px solid #8aa69855;border-radius:20px;padding:18px;box-sizing:border-box;box-shadow:0 25px 80px #000a}.dw-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:14px}.dw-head h2{margin:2px 0 4px;font-size:25px}.dw-head p,.dw-muted{margin:0;color:#aebeb6;font-size:11px;line-height:1.45}.dw-x{width:38px;height:38px;border-radius:11px;border:1px solid #ffffff26;background:#ffffff0c;color:#fff;font-size:18px}
+.dw-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.dw-tile{border:1px solid #73948344;background:#182923;color:#eef7f1;border-radius:15px;padding:14px;text-align:left;min-height:100px}.dw-tile.primary{border-color:#9ee3b777;background:linear-gradient(135deg,#244a38,#173027)}.dw-tile strong{display:block;font-size:15px;margin-bottom:7px}.dw-tile span{font-size:11px;color:#a9bbb1;line-height:1.45}.dw-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.dw-btn{border:1px solid #78948166;background:#25382f;color:#f3f7f4;border-radius:11px;padding:11px 14px;font:750 11px system-ui}.dw-btn.primary{background:#a4d9b7;color:#102117}.dw-btn.danger{background:#492824;color:#ffd9d2}.dw-btn:disabled{opacity:.4}
+.dw-fields{display:flex;gap:9px;flex-wrap:wrap}.dw-field{display:flex;flex-direction:column;gap:6px;min-width:160px;flex:1}.dw-field label{font:700 9px Consolas;color:#a6b8ae}.dw-field input,.dw-field select{width:100%;box-sizing:border-box;border:1px solid #83998d55;background:#0a1512;color:#fff;border-radius:11px;padding:11px;font:600 13px system-ui}.dw-error{background:#4a211f;border:1px solid #c96d6255;color:#ffd5cf;padding:9px 11px;border-radius:11px;font-size:11px;margin:9px 0}.dw-ok{background:#17372d;border:1px solid #6ed5a455;color:#d8ffed;padding:9px 11px;border-radius:11px;font-size:11px;margin:9px 0}
+.dw-profile{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;border-radius:13px;background:#ffffff08}.dw-profile code,.dw-code{color:#ffe39a;font-weight:900;letter-spacing:.08em}.dw-code{font-size:27px}.dw-list{display:grid;gap:8px;margin-top:10px}.dw-player{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #ffffff16;background:#ffffff08;padding:10px 12px;border-radius:12px}.dw-player b{font-size:13px}.dw-player small{display:block;color:#a8b9af;font-size:9px;margin-top:3px}.dw-badge{font:800 9px Consolas;padding:5px 7px;border-radius:999px;background:#263b32}.dw-badge.ready{background:#1e4937;color:#99efbd}.dw-badge.team1{background:#173e50;color:#9adfff}.dw-badge.team2{background:#50251e;color:#ffb09d}.dw-sep{height:1px;background:#ffffff12;margin:14px 0}
+.dw-hud{position:fixed;z-index:12;left:50%;top:10px;transform:translateX(-50%);display:none;min-width:260px;max-width:88vw;padding:8px 12px;border-radius:12px;background:#0b1714dc;border:1px solid #90ae9d44;color:#fff;pointer-events:none;text-align:center}.dw-hud.on{display:block}.dw-hud b{font-size:12px}.dw-hud span{display:block;margin-top:3px;font:700 9px Consolas;color:#c0d1c7}.dw-respawn{position:fixed;z-index:15;inset:0;display:none;place-items:center;pointer-events:none;background:#03080755}.dw-respawn.on{display:grid}.dw-respawn div{padding:15px 22px;border-radius:
