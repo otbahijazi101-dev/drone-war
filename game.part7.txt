@@ -24,7 +24,7 @@
     missileCooldown=Math.max(0,missileCooldown-dt);
     if(pendingMissile){pendingMissile=false;launchMissile();}
     updateBullets(dt);if(running)updateMissiles(dt);if(running)updateEnemyMissiles(dt);
-    updateEffects(dt);updateAtmosphere(dt);if(running)updateObjectives(dt,previousPlayer);if(running)updateTutorial();
+    updateEffects(dt);updateOnlineRemotes(dt);updateAtmosphere(dt);if(running&&!onlineActive)updateObjectives(dt,previousPlayer);if(running&&!onlineActive)updateTutorial();
     updateHUD();updateCombatHUD(dt);radarClock-=dt;if(radarClock<=0){radarClock=.09;drawRadar();}
   }
 
@@ -144,6 +144,15 @@
     applyQuality();
   });
   canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); running = false; fail('3D görüntü kesildi. Oyunu yeniden başlatmayı dene.'); });
+  window.DroneArenaOnlineBridge={
+    start:startOnlineArena,stop:stopOnlineArena,snapshot:onlineSnapshot,upsertRemote:upsertOnlineRemote,removeRemote:(id)=>{const r=onlineRemotes.get(id);if(r){disposeObject(r.mesh);onlineRemotes.delete(id);}},
+    setLocalHP:onlineSetLocalHP,respawn:onlineRespawn,bossSnapshot:onlineBossSnapshot,damageBoss:onlineApplyBossDamage,
+    remoteFire:(id)=>{const r=onlineRemotes.get(id);if(r?.mesh?.visible){muzzleFlash(r.mesh.position.clone().add(V(0,0,-1)),true);noiseSound('shot',.25);}},
+    remoteMissile:(id)=>{const r=onlineRemotes.get(id);if(r?.mesh?.visible)noiseSound('missile',.22);},
+    setScore:(kills,newScore)=>{missionKills=Math.max(0,Number(kills)||0);score=Math.max(0,Number(newScore)||0);},
+    setRemoteHP:(id,value)=>{const r=onlineRemotes.get(id);if(r){r.hp=Math.max(0,Number(value)||0);r.dead=r.hp<=0;r.mesh.visible=!r.dead;}},
+    isOnline:()=>onlineActive,isHost:()=>onlineIsHost,mode:()=>onlineMode,showHome:()=>{if(onlineActive)stopOnlineArena();else showPanel('home');}
+  };
   applyMap(profile.selectedMap);reset();saveProfile();showPanel('home');
   let lastDraw=0;
   function frame(time) {
