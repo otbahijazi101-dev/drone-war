@@ -195,8 +195,8 @@
     return {outcome,difficulty:sessionDifficulty,repairs:repairCount,collisions:collisionCount,motorHealth:Math.round(Math.min(...motorHP)),practice:practiceActive,missionId:mission?.id||0,map:missionMap,droneId:activeDroneId(),upgraded:practiceActive?practiceConfig.upgraded:true,
       time:missionTime,kills:missionKills,score,shots:flightLog.shots,hits:combatLog.primaryHits,missiles:flightLog.missiles,missileHits:combatLog.missileHits,
       accuracy:flightLog.shots?Math.min(100,combatLog.primaryHits/flightLog.shots*100):null,
-      damageTaken:combatLog.damageTaken,damageDealt:combatLog.damageDealt,distance:flightLog.distance,topSpeed:combatLog.topSpeed,
-      medals:[],record:null};
+      damageTaken:combatLog.damageTaken,damageDealt:combatLog.damageDealt,distance:flightLog.distance,topSpeed:combatLog.topSpeed,comboBest,
+      medals:[...sessionMedals],record:null};
   }
   function storeMissionReport(win){
     const r=sessionReport=captureReport(win?'success':'defeat');if(r.practice)return;
@@ -222,7 +222,7 @@
     if(!r)return '';
     const metric=(label,value,note='')=>`<div class="report-metric"><small>${label}</small><b>${value}</b><span>${note}</span></div>`;
     return `<section class="flight-report"><div class="report-heading"><h2>${r.practice?'Test uçuşu ölçümleri':'Uçuş raporu'}</h2><span>${mapById(r.map).name} · ${droneById(r.droneId).name} · ${DIFFICULTIES[r.difficulty].name}</span></div>
-      <div class="report-metrics">${metric('SÜRE',formatDuration(r.time),'Mola süresi hariç')}${metric('NORMAL ATIŞ İSABETİ',percentText(r.accuracy),`${r.hits} isabet / ${r.shots} mermi`)}${metric('ALINAN HASAR',numberText(r.damageTaken),'Can kaybı')}${metric('VERİLEN HASAR',numberText(r.damageDealt),'Hedeflerin kaybettiği can')}${metric('FÜZE İSABETİ',`${r.missileHits} / ${r.missiles}`,'İsabet eden / fırlatılan')}${metric('AZAMİ HIZ',`${r.topSpeed.toFixed(1)} m/sn`,`${Math.round(r.distance)} metre uçuş`)}</div>
+      <div class="report-metrics">${metric('SÜRE',formatDuration(r.time),'Mola süresi hariç')}${metric('NORMAL ATIŞ İSABETİ',percentText(r.accuracy),`${r.hits} isabet / ${r.shots} mermi`)}${metric('ALINAN HASAR',numberText(r.damageTaken),'Can kaybı')}${metric('VERİLEN HASAR',numberText(r.damageDealt),'Hedeflerin kaybettiği can')}${metric('FÜZE İSABETİ',`${r.missileHits} / ${r.missiles}`,'İsabet eden / fırlatılan')}${metric('EN İYİ KOMBO',`x${r.comboBest||0}`,'Arka arkaya düşürme')}${metric('AZAMİ HIZ',`${r.topSpeed.toFixed(1)} m/sn`,`${Math.round(r.distance)} metre uçuş`)}</div>
       <p class="report-note">Çarpışma ${r.collisions} · Tamir ${r.repairs} · En düşük motor durumu ${r.motorHealth}%</p>
       ${r.medals.length?`<div class="record-badges">${r.medals.map(m=>`<span>${m}</span>`).join('')}</div>`:''}
       ${r.record?`<div class="record-summary"><strong>BU HARİTADA / BU GÖREVDE EN İYİ</strong><span>Puan ${r.record.bestScore}</span><span>Süre ${r.record.bestTime===null?'—':formatDuration(r.record.bestTime)}</span><span>İsabet ${percentText(r.record.bestAccuracy)}</span><span>Hasar ${r.record.leastDamage===null?'—':numberText(r.record.leastDamage)}</span></div><p class="report-note">Rekorlar başarıyla tamamlanan görevlerden kaydedilir. Atış yapılmayan uçuşların isabet oranı boş kalır.</p>`:''}
@@ -325,6 +325,21 @@
     return false;
   }
 
+  function missionBriefingHTML(m){
+    const stats=flightStats(),map=mapById(profile.selectedMap),d=DIFFICULTIES[profile.settings.difficulty];
+    const threats=['SCOUT','STRIKER'];if(m.id>=3)threats.push('ARMORED');if(m.boss)threats.push('LİDER');
+    const risk=m.boss?'ÇOK YÜKSEK':m.id>=9?'YÜKSEK':m.id>=5?'ORTA':'NORMAL';
+    return `<div class="eyebrow">OPERASYON BRİFİNGİ · GÖREV ${m.id}</div><h1>${m.name}</h1>
+      <p>${TYPE_LABELS[m.kind]} · ${missionDescription(m)}. Kalkıştan önce hedefi, ortamı ve drone durumunu kontrol et.</p>
+      <div class="menu-grid">
+        <article class="menu-card selected"><small>GÖREV HEDEFİ</small><strong>${missionDescription(m)}</strong><p>Ödül: ${m.reward} kredi · ${m.xp} XP</p><span class="tag">${m.boss?'LİDER SAVAŞI · 3 FAZ':'OPERASYON'}</span></article>
+        <article class="menu-card"><small>ORTAM / ZORLUK</small><strong>${map.name} · ${d.name}</strong><p>Risk: ${risk}<br>Beklenen tehdit: ${threats.join(' · ')}</p></article>
+        <article class="menu-card"><small>AKTİF DRONE</small><strong>${droneById(profile.selectedDrone).name}</strong><p>${stats.hp} can · ${numberText(stats.speed)} m/sn · ${stats.damage} mermi hasarı · ${stats.missile} füze hasarı</p></article>
+        <article class="menu-card"><small>HATIRLATMA</small><strong>Sol tık ateş · Sağ tık özel füze</strong><p>Boşluk: takla · A/D + Boşluk: barrel roll · Füze bekleme: 2 sn · Gamepad RT/LT destekli.</p></article>
+      </div>
+      <div class="menu-actions">${actionButton('briefing-start','OPERASYONA BAŞLA','primary')}${actionButton('briefing-back','GERİ DÖN')}</div>`;
+  }
+
   function renderPanel() {
     const mission = practiceActive?PRACTICE_MISSION:isChase()&&['pause','success','defeat'].includes(activeView)?CHASE_MISSION:MISSIONS[selectedMission - 1]; let html = '';
     if (activeView === 'home') {
@@ -343,6 +358,7 @@
             <p>${TYPE_LABELS[m.kind]}<br>${missionDescription(m)}</p><span class="tag">${done?'★'.repeat(done.stars):m.boss?'LİDER DRONE':`${m.reward} kredi`}</span>
           </button>`;
         }).join('')}</div><div class="menu-actions">${actionButton('play',`${selectedMission}. GÖREVİ OYNA`,'primary')}${actionButton('maps',`HARİTA · ${mapById(profile.selectedMap).name}`)}${actionButton('home','ANA MENÜ')}</div>`;
+    } else if(activeView==='briefing'){html=missionBriefingHTML(mission);
     } else if(activeView==='chase'){html=chasePanelHTML();
     } else if(activeView==='endless'){html=endlessPanelHTML();
     } else if(activeView==='endless-result'){html=endlessResultHTML();
@@ -364,7 +380,7 @@
     } else if (activeView === 'controls') {
       html=`<div class="eyebrow">UÇUŞ KILAVUZU</div><h1>Kontroller</h1>
         ${touchActive?phoneControlsHTML():`<dl class="control-list">${Object.keys(DEFAULT_KEYS).map(k=>`<dt>${keyLabel(profile.settings.bindings[k])}</dt><dd>${KEY_NAMES[k]}</dd>`).join('')}
-        <dt>Fare / parmak</dt><dd>Yatay hareketle dön; dikey hareketle yüksel veya alçal.</dd><dt>Sol tuş basılı</dt><dd>Seri atış · 36 mermi · ısınmaya dikkat et.</dd>
+        <dt>Fare / parmak</dt><dd>Yatay hareketle dön; dikey hareketle yüksel veya alçal.</dd><dt>Sol tuş basılı</dt><dd>Seri atış · 36 mermilik şarjör. Silah ısısı yoktur.</dd>
         <dt>Şarjör</dt><dd>Boşken otomatik, doldurma tuşuyla istediğin zaman yenile. Yedek mermi sınırsız.</dd>
         <dt>Füze uyarısı</dt><dd>Hız takviyesi kullanıp keskin dönüşle yaklaşan füzeden kaç.</dd><dt>Motor hasarı</dt><dd>Hasarlı motorlar itişi ve dengeyi azaltır. Motor durumunu üstteki göstergeden izle.</dd><dt>Tamir</dt><dd>Büyük Kaçış haritasındaki yeşil alanlarda yavaşla ve iniş yardımını aç. Tehdit yokken 4 saniyede tamir edilir.</dd><dt>Telefon</dt><dd>Joystick, irtifa, kamera, seri atış, doldurma, füze ve iniş düğmeleri.</dd></dl>`}
 
