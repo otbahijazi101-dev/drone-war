@@ -18,12 +18,13 @@
   function update(dt) {
     if(!running)return;
     clock+=dt;missionTime+=dt;noticeTime-=dt;if(noticeTime<=0)ui.notice.classList.remove('on');
+    pollGamepad(dt);
     const previousPlayer=player.position.clone();
-    updatePlayer(dt);updateCamera(dt);if(running){updateWeapon(dt);updateEnemies(dt);updateLock(dt);updateService(dt);}
+    updatePlayer(dt);updatePlayerDamageVisuals(dt);updateCamera(dt);if(running){updateWeapon(dt);updateEnemies(dt);updateLock(dt);updateService(dt);}
     missileCooldown=Math.max(0,missileCooldown-dt);
     if(pendingMissile){pendingMissile=false;launchMissile();}
     updateBullets(dt);if(running)updateMissiles(dt);if(running)updateEnemyMissiles(dt);
-    updateEffects(dt);if(running)updateObjectives(dt,previousPlayer);if(running)updateTutorial();
+    updateEffects(dt);updateAtmosphere(dt);if(running)updateObjectives(dt,previousPlayer);if(running)updateTutorial();
     updateHUD();updateCombatHUD(dt);radarClock-=dt;if(radarClock<=0){radarClock=.09;drawRadar();}
   }
 
