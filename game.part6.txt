@@ -41,7 +41,7 @@
     if(!running||reloadRemaining>0||primaryCooldown>0)return false;
     if(ammo<=0){beginReload();return false;}
     ammo--;primaryCooldown=primaryInterval;
-    emitBullet();noiseSound('shot');sound(130+Math.random()*30,.045,.023);
+    emitBullet();if(onlineActive)window.DroneArenaOnlineNet?.onLocalFire?.();noiseSound('shot');sound(130+Math.random()*30,.045,.023);
     muzzleSide*=-1;
     if(ammo===0)beginReload();return true;
   }
@@ -223,6 +223,10 @@
       for (const e of foes) if (!e.dead && segmentDistanceSq(previous, b.mesh.position, e.mesh.position) < (e.radius+.5)**2) {
         b.life=0;combatLog.primaryHits++;const damage=Math.min(Math.max(0,e.hp),flightStats().damage);combatLog.damageDealt+=damage;combatLog.lastHit=damage;e.hp-=damage;hitTime=.15;noiseSound('metal',.45);enemyImpact(e,b.mesh.position,b.velocity.clone().normalize());if (e.hp <= 0) destroyEnemy(e);break;
       }
+      if(onlineActive&&b.life>0)for(const r of onlineRemotes.values())if(onlineCanTarget(r)&&r.mesh.visible&&segmentDistanceSq(previous,b.mesh.position,r.mesh.position)<(r.radius+.55)**2){
+        b.life=0;combatLog.primaryHits++;hitTime=.15;noiseSound('metal',.38);impactBurst(b.mesh.position,b.velocity.clone().normalize(),true);
+        if(r.kind==='boss')window.DroneArenaOnlineNet?.onBossHit?.(flightStats().damage);else window.DroneArenaOnlineNet?.onLocalHit?.(r.id,flightStats().damage,'primary');break;
+      }
     }
     for (const b of enemyShots) {
       if(!running)break;
@@ -237,20 +241,14 @@
     bullets = bullets.filter(keep); enemyShots = enemyShots.filter(keep);
   }
   function updateLock(dt) {
-    const direction = camera.getWorldDirection(V()); let candidate = null, best = touchActive?.94:.957;
-    for (const e of foes) {
-      if (e.dead) continue;
-      const delta = e.mesh.position.clone().sub(camera.position);
-      if (e.mesh.position.distanceTo(player.position)>CFG.lockRange||lineBlocked(player.position,e.mesh.position))continue;
-      const similarity = delta.normalize().dot(direction);
-      if (similarity > best) { best = similarity; candidate = e; }
+    const direction=camera.getWorldDirection(V());let candidate=null,best=touchActive?.94:.957;
+    if(onlineActive){
+      for(const r of onlineRemotes.values()){if(!onlineCanTarget(r)||!r.mesh.visible)continue;const delta=r.mesh.position.clone().sub(camera.position);if(r.mesh.position.distanceTo(player.position)>CFG.lockRange||lineBlocked(player.position,r.mesh.position))continue;const similarity=delta.normalize().dot(direction);if(similarity>best){best=similarity;candidate=r;}}
+    }else{
+      for(const e of foes){if(e.dead)continue;const delta=e.mesh.position.clone().sub(camera.position);if(e.mesh.position.distanceTo(player.position)>CFG.lockRange||lineBlocked(player.position,e.mesh.position))continue;const similarity=delta.normalize().dot(direction);if(similarity>best){best=similarity;candidate=e;}}
     }
-    if(touchActive&&lockTarget&&!lockTarget.dead){
-      const delta=lockTarget.mesh.position.clone().sub(camera.position);
-      if(delta.normalize().dot(direction)>.90&&lockTarget.mesh.position.distanceTo(player.position)<=CFG.lockRange&&!lineBlocked(player.position,lockTarget.mesh.position))candidate=lockTarget;
-    }
-    if (candidate !== lockTarget) { lockTarget = candidate; lockTime = 0; }
-    if (lockTarget) lockTime = Math.min(targetLockTime(), lockTime + dt); else lockTime = 0;
+    if(touchActive&&lockTarget&&!lockTarget.dead){const delta=lockTarget.mesh.position.clone().sub(camera.position);if(delta.normalize().dot(direction)>.90&&lockTarget.mesh.position.distanceTo(player.position)<=CFG.lockRange&&!lineBlocked(player.position,lockTarget.mesh.position))candidate=lockTarget;}
+    if(candidate!==lockTarget){lockTarget=candidate;lockTime=0;}if(lockTarget)lockTime=Math.min(targetLockTime(),lockTime+dt);else lockTime=0;
   }
   function createMissile(hostile=false) {
     const oldIPhone=/iP(hone|od)/.test(navigator.userAgent)&&Math.max(screen.width||0,screen.height||0)<=736;
@@ -300,7 +298,7 @@
     const m=createMissile(),direction=lockTarget.mesh.position.clone().sub(player.position).normalize();
     m.position.copy(player.position).add(V(Math.cos(yaw)*.72,-.5,-Math.sin(yaw)*.72)).addScaledVector(heading(),1.5);
     m.quaternion.setFromUnitVectors(FORWARD,direction);scene.add(m);
-    missiles.push({mesh:m,target:lockTarget,direction,speed:31,life:8,smoke:0,trailClock:0,age:0,wobble:Math.random()*Math.PI*2});
+    missiles.push({mesh:m,target:lockTarget,direction,speed:31,life:8,smoke:0,trailClock:0,age:0,wobble:Math.random()*Math.PI*2,onlineTargetId:lockTarget?.onlineId||lockTarget?.id||null});
     missileCooldown=missileReload();flightLog.missiles++;missileCinema=.55;
     missileLaunchBurst(m.position,direction);kickCamera(m.position,.24);sound(265,.28,.055);noiseSound('missile',1.05);notify('Özel füze fırlatıldı');return true;
   }
@@ -461,6 +459,7 @@
       particle(position,0xffb85a,1.25,.42,V(),'ring',true);
       for(let i=0;i<5;i++)particle(position,0xff9b35,rand(.09,.17),rand(.28,.55),V(rand(-6,6),rand(1,7),rand(-6,6)),'spark');
     }
+    if(onlineActive&&missile.onlineTargetId){const r=onlineRemotes.get(missile.onlineTargetId);if(r){combatLog.missileHits++;if(r.kind==='boss')window.DroneArenaOnlineNet?.onBossHit?.(flightStats().missile);else window.DroneArenaOnlineNet?.onLocalHit?.(r.id,flightStats().missile,'missile');}return;}
     const affected=foes.filter(e=>!e.dead&&e.mesh.position.distanceTo(position)<7.5+e.radius*.3&&!lineBlocked(position,e.mesh.position));
     if(affected.length)combatLog.missileHits++;
     for(const e of affected){const raw=flightStats().missile,limited=e.type==='boss'?Math.min(raw,e.maxHP*.28):raw,damage=Math.min(Math.max(0,e.hp),limited);combatLog.damageDealt+=damage;combatLog.lastHit=damage;e.hp-=damage;e.hitReaction=.22;hitTime=.18;}
@@ -498,7 +497,8 @@
 
       const wall=firstObstacle(previous,m.mesh.position,.2);
       if(wall){m.mesh.position.copy(previous).lerp(m.mesh.position,Math.max(0,wall.t-.01));damageDestructible(wall.box,7,m.mesh.position,m.direction);detonate(m);}
-      for(const e of foes)if(!e.dead&&segmentDistanceSq(previous,m.mesh.position,e.mesh.position)<(e.radius+.9)**2){detonate(m);break;}
+      if(onlineActive&&m.onlineTargetId){const r=onlineRemotes.get(m.onlineTargetId);if(r&&!r.dead&&segmentDistanceSq(previous,m.mesh.position,r.mesh.position)<(r.radius+1.0)**2)detonate(m);}
+      else for(const e of foes)if(!e.dead&&segmentDistanceSq(previous,m.mesh.position,e.mesh.position)<(e.radius+.9)**2){detonate(m);break;}
       if(m.mesh.position.y<-7)m.life=0;
     }
     missiles=missiles.filter(m=>{if(m.life>0)return true;disposeObject(m.mesh);return false;});
@@ -511,7 +511,7 @@
     ui.boost.style.width=`${boost/flightStats().boost*100}%`;
     ui.enemyCount.textContent=`${foes.filter(e=>!e.dead).length} / ${practiceActive?3:enemyLimit()}`;
     ui.altitude.textContent=`${Math.round(player.position.y+8)} m`;
-    ui.missionLabel.textContent=endlessActive?`${endlessBossWave(endlessLevel)?'BOSS':'SONSUZ ARENA'} · SEVİYE ${endlessLevel}`:practiceActive?`TEST · ${mapById(missionMap).name}`:mission?`${mission.id}. ${mission.name}`:'GÖREV';
+    ui.missionLabel.textContent=onlineActive?mission.name:endlessActive?`${endlessBossWave(endlessLevel)?'BOSS':'SONSUZ ARENA'} · SEVİYE ${endlessLevel}`:practiceActive?`TEST · ${mapById(missionMap).name}`:mission?`${mission.id}. ${mission.name}`:'GÖREV';
     const progress=endlessActive&&mission?.goal?missionKills/mission.goal*100:objectiveProgress()*100;
     ui.missionProgress.style.width=`${progress}%`;ui.missionPercent.textContent=endlessActive?`${Math.round(progress)}%`:practiceActive?'SERBEST':`${Math.round(progress)}%`;updateEndlessHUD();
     const locked=lockTarget&&!lockTarget.dead&&lockTime>=targetLockTime();
