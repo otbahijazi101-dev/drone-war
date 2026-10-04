@@ -20,7 +20,7 @@
     clock+=dt;missionTime+=dt;noticeTime-=dt;if(noticeTime<=0)ui.notice.classList.remove('on');
     pollGamepad(dt);
     const previousPlayer=player.position.clone();
-    updatePlayer(dt);updatePlayerDamageVisuals(dt);updateCamera(dt);if(running){updateWeapon(dt);updateEnemies(dt);updateLock(dt);updateService(dt);}
+    updatePlayer(dt);recordReplay(dt);updatePlayerDamageVisuals(dt);updateCamera(dt);if(running){updateWeapon(dt);updateEnemies(dt);updateLock(dt);updateService(dt);}
     missileCooldown=Math.max(0,missileCooldown-dt);
     if(pendingMissile){pendingMissile=false;launchMissile();}
     updateBullets(dt);if(running)updateMissiles(dt);if(running)updateEnemyMissiles(dt);
@@ -148,7 +148,7 @@
   let lastDraw=0;
   function frame(time) {
     const dt = Math.min(Math.max((time - last) / 1000, 0), .04); last = time;
-    if(running)update(dt);else{animateRotors(player,dt);if(['success','defeat','practice-result'].includes(activeView))updateEffects(dt);}
+    if(running)update(dt);else{if(activeView==='cinematic')updateFinishCinematic(dt);animateRotors(player,dt);if(['success','defeat','practice-result','cinematic'].includes(activeView))updateEffects(dt);}
     updateAudio();if(document.hidden||(!running&&touchActive&&time-lastDraw<50)){requestAnimationFrame(frame);return;}
     const drawDelta=Math.min(.1,(time-lastDraw)/1000);lastDraw=time;if(!renderGarage(drawDelta))renderWorld();requestAnimationFrame(frame);
   }
