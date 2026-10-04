@@ -312,7 +312,7 @@
     m.position.copy(player.position).add(V(Math.cos(yaw)*.72,-.5,-Math.sin(yaw)*.72)).addScaledVector(heading(),1.5);
     m.quaternion.setFromUnitVectors(FORWARD,direction);scene.add(m);
     missiles.push({mesh:m,target:lockTarget,direction,speed:31,life:8,smoke:0,trailClock:0,age:0,wobble:Math.random()*Math.PI*2,onlineTargetId:lockTarget?.onlineId||lockTarget?.id||null});
-    missileCooldown=missileReload();flightLog.missiles++;missileCinema=.55;
+    missileCooldown=missileReload();flightLog.missiles++;missileCinema=.55;if(onlineActive)window.DroneArenaOnlineNet?.onLocalMissile?.(m.onlineTargetId);
     missileLaunchBurst(m.position,direction);kickCamera(m.position,.24);sound(265,.28,.055);noiseSound('missile',1.05);notify('Özel füze fırlatıldı');return true;
   }
   // Shared geometry/textures keep bursts cheap on phones; only materials are per particle.
