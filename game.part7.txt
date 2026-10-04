@@ -49,6 +49,7 @@
       if(other)profile.settings.bindings[other]=old;profile.settings.bindings[rebinding]=e.code;rebinding=null;saveProfile();renderPanel();return;
     }
     const editable=['INPUT','SELECT','TEXTAREA'].includes(e.target?.tagName);if(editable)return;
+    if(e.code==='Space'&&!e.repeat&&running){e.preventDefault();startFlip();return;}
     if(running&&Object.values(profile.settings.bindings).includes(e.code))e.preventDefault();
     if(e.code===profile.settings.bindings.camera&&!e.repeat&&running)toggleCamera();
     if(e.code===profile.settings.bindings.land&&!e.repeat&&running)toggleLanding();
