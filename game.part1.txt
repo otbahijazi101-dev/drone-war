@@ -124,6 +124,31 @@ body.touch-ui{height:var(--game-height,100dvh);overscroll-behavior:none;-webkit-
 .touch-ui.touch-portrait .practice-hud{grid-template-columns:minmax(0,1fr) 158px}.touch-ui.touch-portrait .practice-hud>div{grid-template-columns:1fr 1fr;gap:5px}.touch-ui.touch-portrait .practice-hud button{min-height:44px}
 
 </style>
+<style>
+/* Simplified primary phone controls */
+.touch-ui:not(.layout-editing) #up,
+.touch-ui:not(.layout-editing) #down{display:none!important}
+.touch-ui .stick-label{font-size:0!important}
+.touch-ui .stick-label::after{content:'UÇUŞ';font:800 9px Consolas,monospace;letter-spacing:.08em}
+.touch-ui .touch-boost{justify-content:center!important;padding:4px 8px!important;border-radius:20px!important;font-size:9px!important;background:#21372bdd!important}
+.touch-ui .touch-boost small{display:none!important}
+.touch-ui .weapon-controls .normal-button{border-radius:50%!important;padding:0!important}
+.touch-ui .normal-button span{font-size:0!important}
+.touch-ui .normal-button span::after{content:'ATEŞ';font:900 16px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:.05em;color:#fff0dd}
+.touch-ui .normal-button strong,.touch-ui .normal-button small{display:none!important}
+.touch-ui .weapon-controls .missile-button{border-radius:14px!important;padding:4px!important}
+.touch-ui .missile-caption{font-size:0!important}
+.touch-ui .missile-caption::after{content:'FÜZE';font:800 10px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:.04em;color:#f8ebc7}
+.touch-ui .missile-button strong{font-size:8px!important;margin-top:2px!important}
+.touch-ui .missile-track{height:2px!important;margin-top:3px!important}
+.touch-ui .reload-button{font-size:0!important;border-radius:50%!important;padding:0!important}
+.touch-ui .reload-button::after{content:'↻';font:800 22px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e7f1df}
+.touch-ui .weapon-telemetry{height:5px!important;padding:0!important;background:#14271bcc!important;border-radius:8px!important}
+.touch-ui .weapon-telemetry .heat-caption,.touch-ui .weapon-telemetry .reload-track{display:none!important}
+.touch-ui .weapon-telemetry .heat-track{height:5px!important;margin:0!important;border-radius:8px!important}
+.touch-ui .phone-control-guide{grid-template-columns:1fr 1fr}
+@media(max-width:520px){.touch-ui .phone-control-guide{grid-template-columns:1fr}}
+</style>
 <!-- Three.js r128, MIT license; bundled for offline play. -->
   <div id="touchSafeArea" aria-hidden="true"></div>
   <section id="touchLayoutEditor" class="hidden" aria-hidden="true" aria-label="Telefon kumandalarını düzenle">
@@ -259,7 +284,7 @@ body.touch-ui{height:var(--game-height,100dvh);overscroll-behavior:none;-webkit-
   let touchActive=typeof matchMedia==='function'&&matchMedia('(pointer:coarse)').matches;
   let touchBoost=false,stickId=null,fireTouchId=null,fireTouchX=0,fireTouchY=0,lastFirePress=-Infinity;
   const touchOwners={up:null,down:null};let lastViewportPortrait=null,lastMissilePress=-Infinity,touchEditor=null;
-  const TOUCH_ITEMS=Object.freeze({stick:{name:'Uçuş çubuğu',w:112,h:112},touchBoost:{name:'Hız takviyesi',w:112,h:48},fire:{name:'Ateş',w:96,h:94},missile:{name:'Füze',w:96,h:48},reloadButton:{name:'Doldur',w:58,h:48},up:{name:'Yüksel',w:58,h:44},down:{name:'Alçal',w:58,h:44}});
+  const TOUCH_ITEMS=Object.freeze({stick:{name:'Uçuş çubuğu',w:118,h:118},touchBoost:{name:'Hız takviyesi',w:82,h:40},fire:{name:'Ateş',w:92,h:92},missile:{name:'Füze',w:70,h:44},reloadButton:{name:'Doldur',w:46,h:40},up:{name:'Yüksel',w:44,h:38},down:{name:'Alçal',w:44,h:38}});
   const defaultTouchCustomization=()=>({buttonScale:1,stickScale:1,opacity:1,sizes:{},positions:{portrait:{},landscape:{}}});
   function cleanTouchCustomization(raw){
     const result=defaultTouchCustomization();if(!raw||typeof raw!=='object')return result;
@@ -288,18 +313,19 @@ body.touch-ui{height:var(--game-height,100dvh);overscroll-behavior:none;-webkit-
       }
     };
     measure();const a=rects;
-    let leftH=a.stick.h+a.touchBoost.h+12,rightH=Math.max(a.fire.h,a.up.h+a.down.h+6)+Math.max(a.missile.h,a.reloadButton.h)+12+24;
-    stacked=a.stick.w+Math.max(a.fire.w,a.missile.w)+Math.max(a.up.w,a.down.w,a.reloadButton.w)+22>availableW;
-    if(stacked&&leftH+rightH+16>availableH){fit=Math.max(.55,availableH/(leftH+rightH+16));measure();}
+    let leftH=a.stick.h+a.touchBoost.h+8,rightH=a.fire.h+a.missile.h+8;
+    stacked=a.stick.w+a.fire.w+34>availableW;
+    if(stacked&&leftH+rightH+12>availableH){fit=Math.max(.55,availableH/(leftH+rightH+12));measure();}
     const f=rects.fire,u=rects.up,d=rects.down,m=rects.missile,r=rects.reloadButton,b=rects.touchBoost,j=rects.stick;
     const anchorRight=width-right,lower=height-bottom;
-    j.x=left+j.w/2;j.y=lower-j.h/2;b.x=left+b.w/2;b.y=lower-j.h-12-b.h/2;
-    const weaponBottom=stacked?lower-j.h-b.h-28:lower-24;
+    j.x=left+j.w/2;j.y=lower-j.h/2;
+    b.x=left+b.w/2;b.y=lower-j.h-8-b.h/2;
+    const weaponBottom=stacked?lower-j.h-b.h-18:lower;
     f.x=anchorRight-f.w/2;f.y=weaponBottom-f.h/2;
-    d.x=anchorRight-Math.max(f.w,m.w)-8-d.w/2;d.y=weaponBottom-d.h/2;
-    u.x=anchorRight-Math.max(f.w,m.w)-8-u.w/2;u.y=weaponBottom-d.h-6-u.h/2;
-    const rowBottom=Math.min(f.y-f.h/2,u.y-u.h/2)-8;
-    m.x=anchorRight-m.w/2;m.y=rowBottom-m.h/2;r.x=anchorRight-Math.max(f.w,m.w)-8-r.w/2;r.y=rowBottom-r.h/2;
+    m.x=anchorRight-m.w/2;m.y=weaponBottom-f.h-7-m.h/2;
+    r.x=anchorRight-f.w-7-r.w/2;r.y=weaponBottom-r.h/2;
+    d.x=r.x;d.y=weaponBottom-r.h-5-d.h/2;
+    u.x=r.x;u.y=weaponBottom-r.h-d.h-10-u.h/2;
     for(const [id,rect]of Object.entries(rects)){
       const position=config.positions[orientation][id];
       if(position){rect.x=left+rect.w/2+position.x*Math.max(0,availableW-rect.w);rect.y=top+rect.h/2+position.y*Math.max(0,availableH-rect.h);}
