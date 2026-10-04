@@ -1,4 +1,6 @@
-    body.rotation.z = damp(body.rotation.z, turn*.13+Math.sin(clock*5)*(1-motorPower())*.16,7,dt);
+    const normalBank=turn*.13+Math.sin(clock*5)*(1-motorPower())*.16;
+    const normalizedBank=Math.atan2(Math.sin(body.rotation.z),Math.cos(body.rotation.z));
+    body.rotation.z=damp(normalizedBank,normalBank,7,dt);
     body.position.y = Math.sin(clock * 4) * .025;
     flightLog.distance+=player.position.distanceTo(previousPosition);flightLog.height+=Math.abs(player.position.y-oldHeight);
     combatLog.currentSpeed=dt>0?Math.hypot(player.position.x-previousPosition.x,player.position.z-previousPosition.z)/dt:0;
