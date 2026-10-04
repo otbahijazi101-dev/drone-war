@@ -38,12 +38,11 @@
     (enemy ? enemyShots : bullets).push({mesh: m, velocity: shotDir.multiplyScalar(enemy ? 29 : 120), life: enemy ? 4 : 1.8,source:source.clone(),asset:!!aimedAsset,nearMiss:false});
   }
   function requestPrimaryShot() {
-    if(!running||reloadRemaining>0||overheated||primaryCooldown>0)return false;
+    if(!running||reloadRemaining>0||primaryCooldown>0)return false;
     if(ammo<=0){beginReload();return false;}
-    ammo--;heat=Math.min(100,heat+5.8);primaryCooldown=primaryInterval;
+    ammo--;primaryCooldown=primaryInterval;
     emitBullet();noiseSound('shot');sound(130+Math.random()*30,.045,.023);
     muzzleSide*=-1;
-    if(heat>=100){overheated=true;notify('Silah aşırı ısındı · soğumasını bekle');}
     if(ammo===0)beginReload();return true;
   }
   function startPrimary(pointerId) {
@@ -131,6 +130,27 @@
     }
   }
 
+  function updateBossPhase(e,dt){
+    if(e.type!=='boss')return 1;
+    const ratio=e.hp/Math.max(1,e.maxHP),phase=ratio>.70?1:ratio>.40?2:3;
+    if(phase!==e.bossPhase){
+      e.bossPhase=phase;e.bossSpecial=Math.min(e.bossSpecial||5,2.2);
+      notify(phase===2?'LİDER FAZ 2 · SİLAHLAR AÇILDI':'LİDER FAZ 3 · ÇEKİRDEK SALDIRISI');sound(phase===2?420:260,.34,.06);
+      particle(e.mesh.position,phase===2?0xffb85c:0xff5a3d,phase===2?2.4:3.2,.28,V(),'flash',true);
+    }
+    e.bossSpecial-=dt;
+    if(e.bossPhase>=2&&e.bossSpecial<=0&&e.evadeRemaining<=0){
+      const distance=e.mesh.position.distanceTo(player.position);
+      if(distance<100&&!lineBlocked(e.mesh.position,player.position)){
+        if(e.bossPhase===2){emitBullet(e);launchEnemyMissile(e);e.velocity.addScaledVector(player.position.clone().sub(e.mesh.position).normalize(),5);}
+        else{emitBullet(e);emitBullet(e);emitBullet(e);launchEnemyMissile(e);e.velocity.addScaledVector(player.position.clone().sub(e.mesh.position).normalize(),10);kickCamera(e.mesh.position,.35);}
+        noiseSound('missile',e.bossPhase===3?1.2:.8);
+      }
+      e.bossSpecial=e.bossPhase===3?4.1:6.1;
+    }
+    return e.bossPhase;
+  }
+
   function updateEnemies(dt) {
     if(mission?.kind==='race')return;
     if(isChase()){updatePursuers(dt);return;}
@@ -145,6 +165,7 @@
         const direction=player.position.clone().sub(e.mesh.position).normalize();e.mesh.quaternion.setFromUnitVectors(FORWARD,direction);updateEnemyPresentation(e,dt);continue;
       }
       if(tutorialActive){e.mesh.userData.body.position.y=Math.sin(clock*2+e.phase)*.035;continue;}
+      const bossPhase=updateBossPhase(e,dt);
       e.stateTime-=dt;updateEnemyEvasion(e,dt);
       if(e.stateTime<=0){
         e.stateTime=rand(2.4,5.4);
@@ -162,7 +183,7 @@
       if(e.tactic==='commander'&&foes.filter(o=>!o.dead).length>2)desiredPosition.y+=4;
       desiredPosition.y=clamp(desiredPosition.y,2,31);
       const desiredVelocity=desiredPosition.sub(e.mesh.position);
-      if(desiredVelocity.length()>.2)desiredVelocity.normalize().multiplyScalar(e.speed*(e.state==='retreat'?1.3:1));
+      if(desiredVelocity.length()>.2)desiredVelocity.normalize().multiplyScalar(e.speed*(e.state==='retreat'?1.3:1)*(e.type==='boss'?(bossPhase===3?1.55:bossPhase===2?1.28:1):1));
       if(e.evadeRemaining>0)desiredVelocity.copy(e.evadeDirection).multiplyScalar(e.evadeSpeed);
       for(const other of foes){if(other===e||other.dead)continue;const delta=e.mesh.position.clone().sub(other.mesh.position),distance=delta.length();if(distance>0&&distance<6)desiredVelocity.addScaledVector(delta,(6-distance)/distance*2);}
       const previousEnemy=e.mesh.position.clone();
@@ -175,7 +196,7 @@
       updateEnemyPresentation(e,dt);
       e.fire-=dt;
       if(e.fire<=0&&e.evadeRemaining<=0&&e.mesh.position.distanceTo(target)<90&&!lineBlocked(e.mesh.position,target)){
-        emitBullet(e);const tacticRate=e.tactic==='suppressor'?.72:e.tactic==='interceptor'?.88:1;e.fire=(Math.max(endlessActive?1.65:3.1,(e.type==='boss'?4.3:6.4)-mission.id*.08)+rand(0,1.4))*difficulty().interval*(endlessActive?endlessFireScale(endlessLevel):1)*tacticRate;
+        emitBullet(e);const tacticRate=(e.tactic==='suppressor'?.72:e.tactic==='interceptor'?.88:1)*(e.type==='boss'?(bossPhase===3?.54:bossPhase===2?.72:1):1);e.fire=(Math.max(endlessActive?1.65:3.1,(e.type==='boss'?4.3:6.4)-mission.id*.08)+rand(0,1.4))*difficulty().interval*(endlessActive?endlessFireScale(endlessLevel):1)*tacticRate;
       }
       e.missileTimer-=dt;
       if(e.missileTimer<=0&&e.evadeRemaining<=0&&mission.id>=4&&(e.type==='boss'||e.type==='armored')&&e.mesh.position.distanceTo(player.position)<80){
@@ -210,7 +231,7 @@
       if(wall){b.mesh.position.copy(previous).lerp(b.mesh.position,Math.max(0,wall.t-.002));b.life=0;if(!damageDestructible(wall.box,1,b.mesh.position,b.velocity.clone().normalize()))impactBurst(b.mesh.position,b.velocity.clone().normalize());}
       else if(b.asset&&missionAsset&&segmentDistanceSq(previous,b.mesh.position,missionAsset.mesh.position)<missionAsset.radius**2){b.life=0;hitAsset((5+Math.floor(mission.id/4))*difficulty().damage);impactBurst(b.mesh.position,b.velocity.clone().normalize(),true);}
       else if(segmentDistanceSq(previous,b.mesh.position,player.position)<2.7){b.life=0;damagePlayer((5+Math.floor(mission.id/4))*difficulty().damage*(endlessActive?endlessDamageScale(endlessLevel):1),b.source);impactBurst(b.mesh.position,b.velocity.clone().normalize(),true);}
-      else if(!b.nearMiss&&segmentDistanceSq(previous,b.mesh.position,player.position)<40){b.nearMiss=true;noiseSound('flyby');}
+      else if(!b.nearMiss&&segmentDistanceSq(previous,b.mesh.position,player.position)<40){b.nearMiss=true;noiseSound('flyby');registerNearMiss();}
     }
     const keep = b => { if (b.life > 0) return true; scene.remove(b.mesh); return false; };
     bullets = bullets.filter(keep); enemyShots = enemyShots.filter(keep);
@@ -453,7 +474,7 @@
       ui.target.style.left=`${(screen.x+1)*innerWidth/2}px`;
       ui.target.style.top=`${(1-screen.y)*innerHeight/2}px`;
       ui.target.classList.toggle('locked',!!locked);
-      ui.targetLabel.textContent=`${lockTarget.type==='boss'?'LİDER ':''}${locked?'KİLİT':'HEDEF'} · ${Math.round(lockTarget.mesh.position.distanceTo(player.position))} m · ${Math.ceil(lockTarget.hp)}/${lockTarget.maxHP}`;
+      ui.targetLabel.textContent=`${lockTarget.type==='boss'?`LİDER FAZ ${lockTarget.bossPhase||1} · `:''}${locked?'KİLİT':'HEDEF'} · ${Math.round(lockTarget.mesh.position.distanceTo(player.position))} m · ${Math.ceil(lockTarget.hp)}/${lockTarget.maxHP}`;
       $('targetHP').style.width=`${Math.max(0,lockTarget.hp/lockTarget.maxHP)*100}%`;
     }else ui.target.classList.add('hidden');
   }
