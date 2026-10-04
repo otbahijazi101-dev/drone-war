@@ -42,7 +42,7 @@
   function packEnvironment(root){
     if(!touchActive||root.userData.touchPacked||!root.userData.flightColliders)return;
     const groups=new Map();for(const object of root.children){
-      if(!object.isMesh||object.isInstancedMesh||object.geometry?.type!=='BoxGeometry'||Array.isArray(object.material))continue;
+      if(!object.isMesh||object.isInstancedMesh||object.geometry?.type!=='BoxGeometry'||Array.isArray(object.material)||object.userData?.destructible)continue;
       const key=object.material.uuid+JSON.stringify(object.geometry.parameters)+object.castShadow+object.receiveShadow;
       if(!groups.has(key))groups.set(key,[]);groups.get(key).push(object);
     }
@@ -122,7 +122,7 @@
   const CHASE_POINTS=[[-360,12,250],[-330,20,-330],[320,16,-300],[360,14,260]].map(p=>V(...p));
   const EXTRACTION=V(0,12,450),PAD_POINTS=[V(-245,-7.88,40),V(40,-7.88,-360),V(290,-7.88,100)];
   let sessionDifficulty='normal',recordDifficulty='normal',motorHP=[100,100,100,100],collisionCooldown=0;
-  let activeColliders=[],chaseCheckpoint=0,chaseBeacons=[],chaseTimeLimit=320;
+  let activeColliders=[],activeDestructibles=[],chaseCheckpoint=0,chaseBeacons=[],chaseTimeLimit=320;
   let landingAssist=-1,repairTimer=0,padCooldowns=[0,0,0],repairCount=0,collisionCount=0;
   let backupMessage='',pendingBackup=null,backupUndo=null;
   const isChase=()=>mission?.kind==='chase';
