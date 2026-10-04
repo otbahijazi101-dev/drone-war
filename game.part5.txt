@@ -235,6 +235,8 @@
   let player, foes = [], bullets = [], enemyShots = [], missiles = [], particles = [];
   let running = false, score = 0, hp = 100, missionKills = 0, boost = 100, clock = 0, missionTime = 0;
   let mission = null, bossSpawned = false;
+  let onlineActive=false,onlineMode='',onlineLocalId='',onlineTeam=null,onlineIsHost=false,onlineDead=false;
+  const onlineRemotes=new Map();
   let spawnClock = 1.5, missileCooldown = 0, pendingMissile = false, missileCinema=0;
   const primaryInterval = .16, MAGAZINE=36;
   let ammo=MAGAZINE,reloadRemaining=0;
@@ -327,6 +329,39 @@
     const target=player?.position?.clone()||c.focus.clone(),a=c.time*1.35;camera.position.copy(target).add(V(Math.sin(a)*10,4.8+Math.sin(a*.7)*1.2,Math.cos(a)*10));camera.lookAt(target.clone().lerp(c.focus,.25));camera.updateMatrixWorld(true);
     if(c.time>=c.duration){const view=c.view;finishCinematic=null;document.body.classList.remove('cinematic');const el=$('comboHUD');if(el)el.classList.remove('on','replay','medal');showPanel(view);return false;}return true;
   }
+  function onlineCanTarget(remote){
+    if(!onlineActive||!remote||remote.dead)return false;
+    if(remote.kind==='boss')return onlineMode==='coop_boss';
+    if(onlineMode==='coop_boss')return false;
+    if(onlineMode==='2v2'&&onlineTeam!=null&&remote.team===onlineTeam)return false;
+    return true;
+  }
+  function clearOnlineRemotes(){for(const r of onlineRemotes.values())if(r.mesh)disposeObject(r.mesh);onlineRemotes.clear();}
+  function onlineRemoteColor(team,kind){if(kind==='boss')return 0xff5c3d;if(onlineMode==='2v2')return team===onlineTeam?0x69d7ff:0xff7b69;return 0xffa05f;}
+  function makeOnlineMarker(remote){const marker=new T.Mesh(new T.SphereGeometry(.18,8,6),new T.MeshBasicMaterial({color:onlineRemoteColor(remote.team,remote.kind),toneMapped:false}));marker.position.y=2.15;remote.mesh.add(marker);remote.marker=marker;}
+  function upsertOnlineRemote(id,state){
+    if(!onlineActive||!id||id===onlineLocalId)return null;let r=onlineRemotes.get(id);const kind=state.kind||'player';
+    if(!r){const mesh=kind==='boss'?makeDrone(true,'boss'):makeDrone(false,'scout');mesh.scale.setScalar(kind==='boss'?1.9:.96);scene.add(mesh);
+      r={id,kind,mesh,team:state.team??null,hp:state.hp??100,maxHP:state.maxHP??100,dead:false,radius:kind==='boss'?3.8:2,targetPos:V(),targetQuat:new T.Quaternion(),lastSeen:performance.now()};makeOnlineMarker(r);onlineRemotes.set(id,r);}
+    r.kind=kind;r.team=state.team??r.team;r.hp=Number.isFinite(state.hp)?state.hp:r.hp;r.maxHP=Number.isFinite(state.maxHP)?state.maxHP:r.maxHP;r.dead=!!state.dead;r.lastSeen=performance.now();
+    if(Array.isArray(state.p)){r.targetPos.set(Number(state.p[0])||0,Number(state.p[1])||0,Number(state.p[2])||0);if(!r.initialized){r.mesh.position.copy(r.targetPos);r.initialized=true;}}
+    if(Array.isArray(state.q)&&state.q.length===4)r.targetQuat.set(Number(state.q[0])||0,Number(state.q[1])||0,Number(state.q[2])||0,Number(state.q[3])||1).normalize();
+    r.mesh.visible=!r.dead;if(r.marker?.material)r.marker.material.color.setHex(onlineRemoteColor(r.team,r.kind));return r;
+  }
+  function updateOnlineRemotes(dt){if(!onlineActive)return;const now=performance.now();for(const [id,r] of onlineRemotes){if(now-r.lastSeen>7000&&r.kind!=='boss'){disposeObject(r.mesh);onlineRemotes.delete(id);continue;}if(!r.mesh.visible)continue;r.mesh.position.lerp(r.targetPos,1-Math.exp(-12*dt));r.mesh.quaternion.slerp(r.targetQuat,1-Math.exp(-12*dt));animateRotors(r.mesh,dt,true);}}
+  function onlineSnapshot(){if(!player)return null;return {p:[player.position.x,player.position.y,player.position.z],q:[player.quaternion.x,player.quaternion.y,player.quaternion.z,player.quaternion.w],v:[velocity.x,velocity.y,velocity.z],yaw,hp,dead:onlineDead,team:onlineTeam,kind:'player'};}
+  function onlineBossSnapshot(){if(!onlineActive||onlineMode!=='coop_boss'||!onlineIsHost)return null;const b=foes.find(e=>!e.dead&&e.type==='boss');if(!b)return null;return {p:[b.mesh.position.x,b.mesh.position.y,b.mesh.position.z],q:[b.mesh.quaternion.x,b.mesh.quaternion.y,b.mesh.quaternion.z,b.mesh.quaternion.w],hp:b.hp,maxHP:b.maxHP,dead:b.dead,team:9,kind:'boss',phase:b.bossPhase||1};}
+  function onlineApplyBossDamage(amount){if(!onlineActive||onlineMode!=='coop_boss'||!onlineIsHost)return false;const b=foes.find(e=>!e.dead&&e.type==='boss');if(!b)return false;const dmg=Math.max(.2,Math.min(18,Number(amount)||0));b.hp=Math.max(0,b.hp-dmg);b.hitReaction=.22;hitTime=.15;enemyImpact(b,b.mesh.position,heading());if(b.hp<=0)destroyEnemy(b);return true;}
+  function onlineSetLocalHP(value){if(!onlineActive)return;const next=clamp(Number(value)||0,0,maxHP());if(next<hp){damageFlash=Math.min(.8,damageFlash+.34);noiseSound('metal',.55);kickCamera(player.position,.15);}hp=next;if(hp<=0&&!onlineDead){onlineDead=true;clearInputs();explosion(player.position,1.05);}}
+  function onlineRespawn(position){if(!onlineActive||!player)return;onlineDead=false;hp=maxHP();motorHP.fill(100);ammo=MAGAZINE;reloadRemaining=0;missileCooldown=0;boost=flightStats().boost;velocity.set(0,0,0);const p=Array.isArray(position)?position:[0,8,35];player.position.set(Number(p[0])||0,Number(p[1])||8,Number(p[2])||35);altitudeTarget=player.position.y;camera.position.copy(player.position).add(V(0,6,13));updateCamera(1);}
+  function startOnlineArena(cfg={}){
+    clearOnlineRemotes();endlessActive=false;practiceActive=false;onlineActive=true;onlineMode=cfg.mode||'ffa';onlineLocalId=String(cfg.playerId||'');onlineTeam=cfg.team??null;onlineIsHost=!!cfg.isHost;onlineDead=false;missionMap=MAPS.some(m=>m.id===cfg.map)?cfg.map:'base';applyMap(missionMap);
+    mission={id:0,name:onlineMode==='2v2'?'ONLINE · 2v2':onlineMode==='coop_boss'?'ONLINE · CO-OP BOSS':'ONLINE · FFA',goal:9999,maxEnemies:0,spawnInterval:999,reward:0,xp:0,boss:false,kind:'combat',duration:0};
+    reset();onlineActive=true;onlineMode=cfg.mode||'ffa';onlineLocalId=String(cfg.playerId||'');onlineTeam=cfg.team??null;onlineIsHost=!!cfg.isHost;running=true;hidePanel();initAudio();last=performance.now();ui.missionStrip.classList.remove('hidden');
+    if(onlineMode==='coop_boss'&&onlineIsHost){mission={...MISSIONS[3],name:'ONLINE · CO-OP BOSS'};missionKills=mission.goal-1;bossSpawned=false;spawnEnemy();const b=foes.find(e=>!e.dead&&e.type==='boss');if(b){b.hp=b.maxHP=220;b.speed*=1.08;}}
+    notify(onlineMode==='coop_boss'?'CO-OP BOSS · Takım halinde saldır':'ONLINE MAÇ · Rakip dronlara kilitlen');return true;
+  }
+  function stopOnlineArena(){if(!onlineActive)return;onlineActive=false;onlineDead=false;onlineMode='';onlineLocalId='';onlineTeam=null;onlineIsHost=false;clearOnlineRemotes();clearInputs();running=false;mission=null;reset();showPanel('home');}
   function clearEffects() {
     bullets.concat(enemyShots).forEach(b => scene.remove(b.mesh)); bullets = []; enemyShots = [];
     missiles.forEach(m => disposeObject(m.mesh)); missiles = [];
@@ -585,6 +620,7 @@
     score+=Math.round(baseScore*endlessScore*comboMult);
     explosion(enemy.mesh.position,enemy.type==='boss'?1.8:enemy.type==='armored'?1.15:1);
     if(lockTarget===enemy){lockTarget=null;lockTime=0;}
+    if(onlineActive&&onlineMode==='coop_boss'&&enemy.type==='boss'){window.DroneArenaOnlineNet?.onBossDead?.();return;}
     if(endlessActive&&missionKills>=mission.goal){completeEndlessWave();return;}
     if(['combat','boss'].includes(mission.kind)&&missionKills>=mission.goal){completeMission();return;}
     if(mission.boss && missionKills===mission.goal-1){
@@ -593,6 +629,7 @@
     }else spawnClock=Math.min(spawnClock,1.1);
   }
   function spawnEnemy() {
+    if(onlineActive&&!(onlineMode==='coop_boss'&&onlineIsHost))return false;
     if(practiceActive)return spawnPracticeTarget();
     if(!mission||mission.kind==='race'||(['combat','boss'].includes(mission.kind)&&missionKills>=mission.goal))return false;
     const bossPhase=mission.boss && missionKills>=mission.goal-1;
@@ -627,6 +664,7 @@
     drone.userData.rotors.forEach((r, i) => { r.rotation.y += dt * (fast ? 95 : 70) * (i % 2 ? -1 : 1) * (drone===player?(motorHP[i]<=0?0:.28+.72*motorHP[i]/100):1); });
   }
   function updatePlayer(dt) {
+    if(onlineActive&&onlineDead){velocity.multiplyScalar(Math.exp(-7*dt));return;}
     flipCooldown=Math.max(0,flipCooldown-dt);
     if(flipActive){
       flipAngle+=Math.PI*2*dt/FLIP_DURATION;
