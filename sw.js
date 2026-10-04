@@ -1,4 +1,4 @@
-var CACHE_NAME='drone-war-offline-v13-polish-fixes';
+var CACHE_NAME='drone-war-offline-v14-cinematic-missiles';
 var CORE=[
   '/',
   '/manifest.webmanifest',
