@@ -237,7 +237,7 @@
   let mission = null, bossSpawned = false;
   let spawnClock = 1.5, missileCooldown = 0, pendingMissile = false;
   const primaryInterval = .16, MAGAZINE=36;
-  let ammo=MAGAZINE,heat=0,overheated=false,reloadRemaining=0;
+  let ammo=MAGAZINE,reloadRemaining=0;
   let enemyMissiles=[],damageFlash=0,damageAngle=0,damageDirectionTime=0,hitTime=0,warningBeep=0;
   let missionAsset=null,raceGates=[],gateIndex=0,failureReason='Drone düşürüldü. Hangarda zırhı geliştirebilirsin.';
   let tutorialActive=false,tutorialStep=0;
@@ -248,11 +248,13 @@
   const targetLockTime = () => flightStats().lock;
   let lockTarget = null, lockTime = 0, last = 0, noticeTime = 0, radarClock = 0;
   let yaw = 0, targetYaw = 0, altitudeTarget = 8;
-  let flipActive=false,flipAngle=0,flipCooldown=0,flipMode='front',flipDirection=1;
+  let flipActive=false,flipAngle=0,flipCooldown=0,flipMode='front',flipDirection=1,stuntWindow=0;
+  let comboCount=0,comboTimer=0,comboBest=0,dodgeMedalCooldown=0,sessionMedals=[];
+  let replayFrames=[],replaySample=0,finishCinematic=null,lastKillPosition=V();
   const FLIP_DURATION=.72,FLIP_RECHARGE=1.15;
   function startFlip(mode='front',direction=1){
     if(!running||flipActive||flipCooldown>0||landingAssist>=0)return false;
-    flipActive=true;flipAngle=0;flipCooldown=FLIP_RECHARGE;flipMode=mode;flipDirection=direction<0?-1:1;
+    flipActive=true;flipAngle=0;flipCooldown=FLIP_RECHARGE;flipMode=mode;flipDirection=direction<0?-1:1;stuntWindow=1.35;
     velocity.y=Math.max(velocity.y,1.5);
     altitudeTarget=Math.min(flightCeiling(),Math.max(altitudeTarget,player.position.y+.8));
     notify(mode==='roll'?(flipDirection>0?'SOLA BARREL ROLL · 360°':'SAĞA BARREL ROLL · 360°'):'ÖNE TAKLA · 360°');
@@ -291,6 +293,39 @@
     lastMouseX = lastMouseY = null; lookPointer = null; $('nub').style.transform = '';
   }
   function notify(text) { ui.notice.textContent = text; noticeTime = 2.4; ui.notice.classList.add('on'); }
+  function showCombo(text,medal=false){
+    const el=$('comboHUD');if(!el)return;el.textContent=text;el.classList.toggle('medal',medal);el.classList.add('on');if(!finishCinematic)el.classList.remove('replay');
+  }
+  function awardMedal(name,points=0){
+    if(!sessionMedals.includes(name))sessionMedals.push(name);if(points)score+=points;showCombo(`★ ${name}`,true);sound(880,.16,.035);
+  }
+  function registerKillCombo(enemy){
+    comboCount=comboTimer>0?comboCount+1:1;comboTimer=4;comboBest=Math.max(comboBest,comboCount);
+    const mult=1+Math.min(2,(comboCount-1)*.25);if(comboCount>=2)showCombo(`KOMBO x${comboCount} · PUAN x${mult.toFixed(2)}`);
+    if(comboCount===3)awardMedal('MULTI KILL',120);if(comboCount===5)awardMedal('ACE',250);
+    if(stuntWindow>0)awardMedal('ACRO KILL',100);if(enemy?.type==='boss')awardMedal('BOSS BREAKER',300);
+    return mult;
+  }
+  function registerNearMiss(){if(dodgeMedalCooldown>0)return;dodgeMedalCooldown=4;awardMedal('PERFECT DODGE',80);}
+  function updateComboSystem(dt){
+    comboTimer=Math.max(0,comboTimer-dt);dodgeMedalCooldown=Math.max(0,dodgeMedalCooldown-dt);stuntWindow=Math.max(0,stuntWindow-dt);
+    if(comboTimer===0&&comboCount){comboCount=0;const el=$('comboHUD');if(el&&!finishCinematic)el.classList.remove('on','medal');}
+  }
+  function recordReplay(dt){
+    if(!running||!player)return;replaySample-=dt;if(replaySample>0)return;replaySample=.075;
+    replayFrames.push({p:player.position.clone(),q:player.quaternion.clone(),yaw});while(replayFrames.length>42)replayFrames.shift();
+  }
+  function startFinishCinematic(view,focus){
+    if(finishCinematic){return;}const frames=replayFrames.slice();finishCinematic={view,time:0,duration:2.55,frames,focus:(focus||player.position).clone()};
+    activeView='cinematic';document.body.classList.add('cinematic');ui.overlay.classList.add('hidden');document.body.classList.remove('menu-open');
+    const el=$('comboHUD');if(el){el.textContent=view==='success'?'SİNEMATİK TEKRAR · GÖREV TAMAMLANDI':'SİNEMATİK TEKRAR';el.classList.remove('medal');el.classList.add('on','replay');}
+  }
+  function updateFinishCinematic(dt){
+    if(!finishCinematic)return false;const c=finishCinematic;c.time+=dt;
+    if(c.frames.length&&player){const f=c.frames[Math.min(c.frames.length-1,Math.floor((c.time/c.duration)*c.frames.length))];player.position.lerp(f.p,.72);player.quaternion.slerp(f.q,.72);}
+    const target=player?.position?.clone()||c.focus.clone(),a=c.time*1.35;camera.position.copy(target).add(V(Math.sin(a)*10,4.8+Math.sin(a*.7)*1.2,Math.cos(a)*10));camera.lookAt(target.clone().lerp(c.focus,.25));camera.updateMatrixWorld(true);
+    if(c.time>=c.duration){const view=c.view;finishCinematic=null;document.body.classList.remove('cinematic');const el=$('comboHUD');if(el)el.classList.remove('on','replay','medal');showPanel(view);return false;}return true;
+  }
   function clearEffects() {
     bullets.concat(enemyShots).forEach(b => scene.remove(b.mesh)); bullets = []; enemyShots = [];
     missiles.forEach(m => disposeObject(m.mesh)); missiles = [];
@@ -408,8 +443,6 @@
   }
   function updateWeapon(dt){
     primaryCooldown=Math.max(0,primaryCooldown-dt);
-    heat=Math.max(0,heat-dt*(overheated?32:primaryHeld&&reloadRemaining===0?7:28));
-    if(overheated&&heat<=32){overheated=false;notify('Silah soğudu');}
     if(reloadRemaining>0){
       reloadRemaining=Math.max(0,reloadRemaining-dt);
       if(reloadRemaining===0){ammo=MAGAZINE;flightLog.reloads++;noiseSound('reload');}
@@ -452,10 +485,9 @@
     $('hitMarker').classList.toggle('hidden',hitTime<=0);
     $('primaryLabel').textContent=touchActive?'ATEŞ':'NORMAL ATIŞ';$('missileCaptionText').textContent=touchActive?'FÜZE':'ÖZEL FÜZE';
     $('ammoCount').textContent=touchActive?String(ammo):`${ammo} / ${MAGAZINE}`;
-    $('weaponState').textContent=reloadRemaining>0?`DOLDURULUYOR ${reloadRemaining.toFixed(1)} sn`:overheated?'AŞIRI ISI · SOĞUYOR':touchActive?'BASILI TUT + SÜRÜKLE':'BASILI TUT · SERİ ATIŞ';
-    $('heatBar').style.width=`${heat}%`;$('heatBar').classList.toggle('hot',heat>75);
-    $('heatValue').textContent=overheated?'SOĞUTMA':`${Math.round(heat)}%`;
+    $('weaponState').textContent=reloadRemaining>0?`DOLDURULUYOR ${reloadRemaining.toFixed(1)} sn`:touchActive?'BASILI TUT + SÜRÜKLE':'BASILI TUT · SERİ ATIŞ';
     $('reloadBar').style.width=reloadRemaining>0?`${(1-reloadRemaining/2.2)*100}%`:'0%';
+    updateComboSystem(dt);
     $('reloadButton').textContent=touchActive?(reloadRemaining>0?`DOLUM ${reloadRemaining.toFixed(1)}`:'DOLDUR'):`${keyLabel(profile.settings.bindings.reload)} · DOLDUR`;
     $('touchBoostValue').textContent=`${Math.round(boost/flightStats().boost*100)}%`;
     $('reloadButton').disabled=reloadRemaining>0||ammo===MAGAZINE;
@@ -489,7 +521,7 @@
 
   function reset() {
     clearInputs(); clearEffects(); foes.forEach(e => disposeObject(e.mesh)); foes = [];
-    ammo=MAGAZINE;heat=0;overheated=false;reloadRemaining=0;damageFlash=damageDirectionTime=hitTime=warningBeep=0;tutorialActive=false;
+    ammo=MAGAZINE;reloadRemaining=0;damageFlash=damageDirectionTime=hitTime=warningBeep=0;tutorialActive=false;comboCount=comboTimer=comboBest=dodgeMedalCooldown=stuntWindow=0;sessionMedals=[];replayFrames=[];replaySample=0;finishCinematic=null;
     failureReason='Drone düşürüldü. Görevi yeniden deneyebilir veya hangarda zırhı geliştirebilirsin.';combatLog=freshCombatLog();sessionReport=null;
     $('tutorialCard').classList.add('hidden');
     flightLog={distance:0,turn:0,height:0,shots:0,reloads:0,missiles:0};
@@ -522,7 +554,7 @@
     if(practiceActive){finishPractice();return;}
     if(endlessActive){finishEndless();return;}
     running=false;clearInputs();pendingMissile=false;
-    storeMissionReport(false);failureReason=reason;showPanel('defeat');
+    storeMissionReport(false);failureReason=reason;startFinishCinematic('defeat',player.position.clone());
   }
   function completeMission() {
     if(!running || !mission) return;
@@ -539,7 +571,7 @@
     profile.unlockedMission=Math.max(profile.unlockedMission,Math.min(MISSIONS.length,mission.id+1));
     missionResult={credits,xp,stars,rankUp:pilotLevel()>oldRank,
       message:`${mission.name} tamamlandı. ${mission.kind==='race'?`${gateIndex} kapı geçildi.`:missionAsset?`${mission.kind==='defend'?'Üs':'Konvoy'} korundu. ${missionKills} düşman düşürüldü.`:`${missionKills} düşman etkisiz hâle getirildi.`}`};
-    storeMissionReport(true);sound(700,.25,.05);showPanel('success');
+    storeMissionReport(true);sound(700,.25,.05);startFinishCinematic('success',lastKillPosition.lengthSq()?lastKillPosition:player.position);
   }
   function damagePlayer(amount,source=null) {
     if(!running||practiceActive)return;damageMotor(Math.min(hp,Math.max(0,amount)),source);combatLog.damageTaken+=Math.min(hp,Math.max(0,amount));hp=Math.max(0,hp-amount);damageFlash=Math.min(.8,damageFlash+.42);damageDirectionTime=1.25;
@@ -547,8 +579,9 @@
   }
   function destroyEnemy(enemy) {
     if(!running || enemy.dead) return;
-    enemy.dead=true;missionKills++;
-    const endlessScore=endlessActive?Math.round(1+(endlessLevel-1)*.08):1;score+=(enemy.type==='boss'?1500:enemy.type==='armored'?250:enemy.type==='striker'?180:150)*endlessScore;
+    enemy.dead=true;missionKills++;lastKillPosition.copy(enemy.mesh.position);
+    const endlessScore=endlessActive?Math.round(1+(endlessLevel-1)*.08):1,comboMult=registerKillCombo(enemy),baseScore=enemy.type==='boss'?1500:enemy.type==='armored'?250:enemy.type==='striker'?180:150;
+    score+=Math.round(baseScore*endlessScore*comboMult);
     explosion(enemy.mesh.position,enemy.type==='boss'?1.8:enemy.type==='armored'?1.15:1);
     if(lockTarget===enemy){lockTarget=null;lockTime=0;}
     if(endlessActive&&missionKills>=mission.goal){completeEndlessWave();return;}
@@ -585,7 +618,7 @@
     const enemy={lastSeen:player.position.clone(),unseen:0,mesh:makeDrone(true,type),hp:hitpoints,maxHP:hitpoints,radius:radiusHit,type,dead:false,
       speed:(type==='boss'?4.8:type==='armored'?5.2:type==='scout'?10:7.2)*(endlessActive?endlessSpeedScale(endlessLevel):1),
       velocity:V(),fire:rand(type==='boss'?2.9:4.5,6.5)*(endlessActive?endlessFireScale(endlessLevel):1),phase:angle,orbit:Math.random()<.5?-1:1,
-      state:'attack',stateTime:rand(2,5),tactic:type==='boss'?'commander':type==='armored'?'suppressor':type==='scout'?(Math.random()<.55?'interceptor':'flanker'):(Math.random()<.5?'flanker':'hunter'),squadSlot:foes.length%4,evadeCooldown:0,evadeRemaining:0,evadeDirection:V(),missileTimer:rand(12,19),smokeTime:0,attacksAsset:!!missionAsset&&Math.random()<.42};
+      state:'attack',stateTime:rand(2,5),tactic:type==='boss'?'commander':type==='armored'?'suppressor':type==='scout'?(Math.random()<.55?'interceptor':'flanker'):(Math.random()<.5?'flanker':'hunter'),squadSlot:foes.length%4,bossPhase:1,bossSpecial:rand(4.5,7),evadeCooldown:0,evadeRemaining:0,evadeDirection:V(),missileTimer:rand(12,19),smokeTime:0,attacksAsset:!!missionAsset&&Math.random()<.42};
     enemy.mesh.scale.setScalar(type==='boss'?(endlessActive?2.05:1.85):type==='armored'?1.22:type==='scout'?.87:1);
     enemy.mesh.position.copy(pos);scene.add(enemy.mesh);foes.push(enemy);if(endlessActive)endlessSpawned++;return true;
   }
