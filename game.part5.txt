@@ -67,14 +67,15 @@
   const targetLockTime = () => flightStats().lock;
   let lockTarget = null, lockTime = 0, last = 0, noticeTime = 0, radarClock = 0;
   let yaw = 0, targetYaw = 0, altitudeTarget = 8;
-  let flipActive=false,flipAngle=0,flipCooldown=0;
+  let flipActive=false,flipAngle=0,flipCooldown=0,flipMode='front',flipDirection=1;
   const FLIP_DURATION=.72,FLIP_RECHARGE=1.15;
-  function startFlip(){
+  function startFlip(mode='front',direction=1){
     if(!running||flipActive||flipCooldown>0||landingAssist>=0)return false;
-    flipActive=true;flipAngle=0;flipCooldown=FLIP_RECHARGE;
+    flipActive=true;flipAngle=0;flipCooldown=FLIP_RECHARGE;flipMode=mode;flipDirection=direction<0?-1:1;
     velocity.y=Math.max(velocity.y,1.5);
     altitudeTarget=Math.min(flightCeiling(),Math.max(altitudeTarget,player.position.y+.8));
-    notify('TAKLA · 360°');sound(520,.09,.025);return true;
+    notify(mode==='roll'?(flipDirection>0?'SOLA BARREL ROLL · 360°':'SAĞA BARREL ROLL · 360°'):'ÖNE TAKLA · 360°');
+    sound(mode==='roll'?590:520,.09,.025);return true;
   }
   const velocity = V(), joy = {x: 0, y: 0};
   let keys = {}, ascend = false, descend = false;
@@ -410,10 +411,13 @@
     const oldHeight=player.position.y,vertical=clamp((altitudeTarget-player.position.y)*2.6,landingAssist>=0?-2.2:-9*power,9*power);
     velocity.y=damp(velocity.y,vertical,8,dt);player.position.y+=velocity.y*dt;resolvePlayerCollision(previousPosition,dt);
     player.rotation.y = yaw;
+    const rootPitch=Math.atan2(Math.sin(player.rotation.x),Math.cos(player.rotation.x));
+    const rootRoll=Math.atan2(Math.sin(player.rotation.z),Math.cos(player.rotation.z));
+    if(flipActive&&flipMode==='front')player.rotation.x=-flipAngle;
+    else player.rotation.x=damp(rootPitch,0,12,dt);
+    if(flipActive&&flipMode==='roll')player.rotation.z=flipDirection*flipAngle;
+    else player.rotation.z=damp(rootRoll,0,12,dt);
     const body = player.userData.body;
     const normalPitch=-forward*.11;
-    if(flipActive)body.rotation.x=normalPitch-flipAngle;
-    else{
-      const normalizedPitch=Math.atan2(Math.sin(body.rotation.x),Math.cos(body.rotation.x));
-      body.rotation.x=damp(normalizedPitch,normalPitch,7,dt);
-    }
+    const normalizedPitch=Math.atan2(Math.sin(body.rotation.x),Math.cos(body.rotation.x));
+    body.rotation.x=damp(normalizedPitch,normalPitch,7,dt);
