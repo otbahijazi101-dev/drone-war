@@ -1,4 +1,4 @@
-var CACHE_NAME='drone-war-offline-v3-ios15';
+var CACHE_NAME='drone-war-offline-v4-simple-controls';
 var CORE=[
   '/',
   '/manifest.webmanifest',
@@ -54,6 +54,21 @@ self.addEventListener('fetch',function(event){
             {headers:{'Content-Type':'text/html; charset=utf-8'}}
           );
         });
+      })
+    );
+    return;
+  }
+
+  if(/^\/game\.part\d+\.txt$/.test(url.pathname)){
+    event.respondWith(
+      fetch(event.request).then(function(response){
+        if(response && response.ok){
+          var copy=response.clone();
+          caches.open(CACHE_NAME).then(function(cache){cache.put(event.request,copy);});
+        }
+        return response;
+      }).catch(function(){
+        return caches.match(event.request);
       })
     );
     return;
