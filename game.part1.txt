@@ -168,6 +168,10 @@ body.touch-ui{height:var(--game-height,100dvh);overscroll-behavior:none;-webkit-
     </div>
   </section>
 
+<style>
+.combo-hud{position:fixed;z-index:3;left:50%;top:184px;transform:translateX(-50%) scale(.94);padding:8px 14px;border:1px solid #d9c98499;border-radius:14px;background:#15251fe8;color:#fff1bb;font:900 12px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:.06em;opacity:0;pointer-events:none;transition:opacity .16s,transform .16s;box-shadow:0 6px 24px #0007}.combo-hud.on{opacity:1;transform:translateX(-50%) scale(1)}.combo-hud.medal{color:#fff6cf;border-color:#f1ce70;background:#43371eea}.combo-hud.replay{top:82px;color:#d9f4ff;border-color:#8ed9ff;background:#15303feb}body.menu-open .combo-hud{display:none}body.cinematic .hud,body.cinematic .mission-strip,body.cinematic .objective-detail,body.cinematic .radar-panel,body.cinematic .weapon-controls,body.cinematic .bottom,body.cinematic .mobile,body.cinematic .service-hud,body.cinematic .tutorial-card,body.cinematic .threat-warning{visibility:hidden!important}.weapon-telemetry{min-height:4px}.weapon-telemetry .reload-track{height:4px;margin:0}
+@media(max-width:700px),(pointer:coarse){.combo-hud{top:142px;font-size:10px;padding:7px 10px;max-width:72vw;text-align:center}.combo-hud.replay{top:70px}}
+</style>
 <script>
 /**
  * @license
@@ -244,7 +248,7 @@ body.touch-ui{height:var(--game-height,100dvh);overscroll-behavior:none;-webkit-
     <button id="fire" class="normal-button" type="button" aria-label="Normal atış, basılı tutunca sürekli ateş eder"><span id="primaryLabel">NORMAL ATIŞ</span><strong id="ammoCount">36 / 36</strong><small id="weaponState">BASILI TUT · SERİ ATIŞ</small></button>
     <button id="missile" class="missile-button" type="button" aria-label="Kilitli özel füze fırlat"><span class="missile-caption"><kbd id="missileKey">R</kbd> <span id="missileCaptionText">ÖZEL FÜZE</span></span><strong id="missileText">HAZIR</strong><span class="missile-track"><i id="missileBar"></i></span></button>
     <button class="touch-altitude" type="button" id="up" aria-label="Yüksel, basılı tut">▲<small>YÜKSEL</small></button><button class="touch-altitude" type="button" id="down" aria-label="Alçal, basılı tut">▼<small>ALÇAL</small></button>
-    <div class="weapon-telemetry" id="touchHeat"><div class="heat-caption"><span>SİLAH ISISI</span><b id="heatValue">0%</b></div><div class="heat-track"><i id="heatBar"></i></div><div class="reload-track"><i id="reloadBar"></i></div></div>
+    <div class="weapon-telemetry" id="touchHeat" aria-label="Şarjör doldurma durumu"><div class="reload-track"><i id="reloadBar"></i></div></div>
     <button id="reloadButton" class="reload-button" type="button">E · DOLDUR</button>
   </div>
   <div id="damageFlash" class="damage-flash"></div><div id="damageDirection" class="direction-indicator hidden"></div><div id="hitMarker" class="hit-marker hidden">×</div>
@@ -254,7 +258,7 @@ body.touch-ui{height:var(--game-height,100dvh);overscroll-behavior:none;-webkit-
   <aside id="endlessHUD" class="endless-hud hidden" aria-label="Sonsuz Arena durumu"><strong id="endlessTitle">SONSUZ ARENA</strong><div class="endless-row"><span>SEVİYE</span><b id="endlessLevelHUD">1</b></div><div class="endless-row"><span>KALAN</span><b id="endlessRemainingHUD">0</b></div><div class="endless-row"><span>ZORLUK</span><b id="endlessDifficultyHUD">%100</b></div><div class="endless-row"><span>EN İYİ</span><b id="endlessBestHUD">1</b></div><div class="endless-meter"><i id="endlessProgressHUD"></i></div></aside>
   <aside id="serviceHUD" class="service-hud hidden" aria-label="İniş ve tamir alanı"><strong id="serviceTitle"></strong><p id="serviceStatus"></p><div class="service-track"><i id="serviceProgress"></i></div><button type="button" id="serviceButton">F · İN / TAMİR</button></aside><div class="fpv-overlay" aria-hidden="true"><span>FPV / CANLI GÖRÜNTÜ</span><i></i></div>
   <div id="waypoint" class="waypoint hidden"></div>
-  <div id="notice" class="notice" role="status"></div>
+  <div id="notice" class="notice" role="status"></div><div id="comboHUD" class="combo-hud" aria-live="polite"></div>
   <div class="bottom"><div class="boost"><div>HIZ TAKVİYESİ</div><div class="bar"><i id="boostbar"></i></div></div><div id="flightHelp" class="desktop-help">W/S ileri/geri · A/D dönüş · BOŞLUK öne takla · A/D + BOŞLUK barrel roll · Fare yön/irtifa · Sol tık ateş · Sağ tık özel füze · P mola</div></div>
   <div class="mobile"><div class="move-cluster"><button type="button" id="touchBoost" class="touch-boost" aria-label="Hız takviyesini aç veya kapat" aria-pressed="false">TAKVİYE<small id="touchBoostValue">100%</small></button><div class="stick" id="stick" role="group" aria-label="Uçuş çubuğu: ileri geri uçmak ve sağa sola dönmek için sürükle"><i class="nub" id="nub"></i><span class="stick-label">İLERİ / GERİ · DÖN</span></div></div></div>
   <div id="overlay" class="overlay"><main class="menu-panel" aria-live="polite"><div class="menu-brand"><span>DRONE ARENA</span><small>OPERASYON KONSOLU</small></div><div id="panelContent"></div><footer class="menu-foot"><span id="saveState">İLERLEME BU TARAYICIDA SAKLANIR</span><span>TEK DOSYA · ÇEVRİMDIŞI OYNANIR</span></footer></main></div>
