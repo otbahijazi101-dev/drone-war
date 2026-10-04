@@ -249,7 +249,7 @@
   let lockTarget = null, lockTime = 0, last = 0, noticeTime = 0, radarClock = 0;
   let yaw = 0, targetYaw = 0, altitudeTarget = 8;
   let flipActive=false,flipAngle=0,flipCooldown=0,flipMode='front',flipDirection=1,stuntWindow=0;
-  let comboCount=0,comboTimer=0,comboBest=0,dodgeMedalCooldown=0,sessionMedals=[];
+  let comboCount=0,comboTimer=0,comboBest=0,comboDisplayTimer=0,dodgeMedalCooldown=0,sessionMedals=[];
   let replayFrames=[],replaySample=0,finishCinematic=null,lastKillPosition=V();
   const FLIP_DURATION=.72,FLIP_RECHARGE=1.15;
   function startFlip(mode='front',direction=1){
@@ -294,7 +294,7 @@
   }
   function notify(text) { ui.notice.textContent = text; noticeTime = 2.4; ui.notice.classList.add('on'); }
   function showCombo(text,medal=false){
-    const el=$('comboHUD');if(!el)return;el.textContent=text;el.classList.toggle('medal',medal);el.classList.add('on');if(!finishCinematic)el.classList.remove('replay');
+    const el=$('comboHUD');if(!el)return;comboDisplayTimer=medal?2.35:Math.max(comboDisplayTimer,1.15);el.textContent=text;el.classList.toggle('medal',medal);el.classList.add('on');if(!finishCinematic)el.classList.remove('replay');
   }
   function awardMedal(name,points=0){
     if(!sessionMedals.includes(name))sessionMedals.push(name);if(points)score+=points;showCombo(`★ ${name}`,true);sound(880,.16,.035);
@@ -308,8 +308,9 @@
   }
   function registerNearMiss(){if(dodgeMedalCooldown>0)return;dodgeMedalCooldown=4;awardMedal('PERFECT DODGE',80);}
   function updateComboSystem(dt){
-    comboTimer=Math.max(0,comboTimer-dt);dodgeMedalCooldown=Math.max(0,dodgeMedalCooldown-dt);stuntWindow=Math.max(0,stuntWindow-dt);
-    if(comboTimer===0&&comboCount){comboCount=0;const el=$('comboHUD');if(el&&!finishCinematic)el.classList.remove('on','medal');}
+    comboTimer=Math.max(0,comboTimer-dt);comboDisplayTimer=Math.max(0,comboDisplayTimer-dt);dodgeMedalCooldown=Math.max(0,dodgeMedalCooldown-dt);stuntWindow=Math.max(0,stuntWindow-dt);
+    if(comboTimer===0&&comboCount)comboCount=0;
+    if(comboDisplayTimer===0&&!finishCinematic){const el=$('comboHUD');if(el)el.classList.remove('on','medal');}
   }
   function recordReplay(dt){
     if(!running||!player)return;replaySample-=dt;if(replaySample>0)return;replaySample=.075;
@@ -317,7 +318,7 @@
   }
   function startFinishCinematic(view,focus){
     if(finishCinematic){return;}const frames=replayFrames.slice();finishCinematic={view,time:0,duration:2.55,frames,focus:(focus||player.position).clone()};
-    activeView='cinematic';document.body.classList.add('cinematic');ui.overlay.classList.add('hidden');document.body.classList.remove('menu-open');
+    activeView='cinematic';document.body.classList.add('cinematic');ui.overlay.classList.add('hidden');document.body.classList.remove('menu-open');if(player)player.visible=true;
     const el=$('comboHUD');if(el){el.textContent=view==='success'?'SİNEMATİK TEKRAR · GÖREV TAMAMLANDI':'SİNEMATİK TEKRAR';el.classList.remove('medal');el.classList.add('on','replay');}
   }
   function updateFinishCinematic(dt){
@@ -521,7 +522,7 @@
 
   function reset() {
     clearInputs(); clearEffects(); foes.forEach(e => disposeObject(e.mesh)); foes = [];
-    ammo=MAGAZINE;reloadRemaining=0;damageFlash=damageDirectionTime=hitTime=warningBeep=0;tutorialActive=false;comboCount=comboTimer=comboBest=dodgeMedalCooldown=stuntWindow=0;sessionMedals=[];replayFrames=[];replaySample=0;finishCinematic=null;
+    ammo=MAGAZINE;reloadRemaining=0;damageFlash=damageDirectionTime=hitTime=warningBeep=0;tutorialActive=false;comboCount=comboTimer=comboBest=comboDisplayTimer=dodgeMedalCooldown=stuntWindow=0;sessionMedals=[];replayFrames=[];replaySample=0;finishCinematic=null;
     failureReason='Drone düşürüldü. Görevi yeniden deneyebilir veya hangarda zırhı geliştirebilirsin.';combatLog=freshCombatLog();sessionReport=null;
     $('tutorialCard').classList.add('hidden');
     flightLog={distance:0,turn:0,height:0,shots:0,reloads:0,missiles:0};
