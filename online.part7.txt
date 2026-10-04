@@ -1,0 +1,43 @@
+myId(),state.team));startLoops();}catch(e){state.inMatch=false;setError(e);state.view='room';overlay.classList.add('open');render();pollRoom();}}
+async function stopRealtime(leaveAfter=true){clearInterval(state.stateTimer);clearInterval(state.scoreTimer);state.stateTimer=state.scoreTimer=null;if(state.reconnectTimer)clearTimeout(state.reconnectTimer);state.reconnectTimer=null;hud.classList.remove('on');respawnOverlay.classList.remove('on');window.DroneArenaOnlineBridge?.stop?.();if(state.sb&&state.channel)try{await state.sb.removeChannel(state.channel);}catch(_){}state.channel=null;const was=state.inMatch;state.inMatch=false;state.isHost=false;if(leaveAfter&&was)await leaveRoom(false);}
+async function quitMatch(){await stopRealtime(true);state.room=null;state.result=null;state.view='home';overlay.classList.add('open');render();}
+
+window.DroneArenaOnlineNet={
+  onLocalFire(){if(state.inMatch)send('fire',{id:myId()});},
+  onLocalMissile(target){if(state.inMatch)send('missile',{id:myId(),target});},
+  onLocalHit(target,damageValue,weapon){if(state.inMatch)send('hit',{source:myId(),target,damage:damageValue,weapon});},
+  onBossHit(damageValue){if(!state.inMatch)return;if(state.isHost)window.DroneArenaOnlineBridge?.damageBoss?.(damageValue);else send('bossHit',{source:myId(),damage:damageValue});},
+  onBossProjectileHit(target,damageValue){if(state.inMatch&&state.isHost)processBossDamagePlayer(target,damageValue);},
+  onBossDead(){if(!state.inMatch)return;if(state.isHost)endAsHost('Boss yok edildi',state.room.players.map(x=>x.player_id));else send('bossDead',{id:myId()});},
+  onLocalEnvironmentalDeath(){if(!state.inMatch)return;if(state.isHost)processEnvironmentDeath(myId());else send('env',{target:myId()});},
+  openPause(){if(state.inMatch){state.view='pause';overlay.classList.add('open');render();}}
+};
+
+overlay.addEventListener('click',async event=>{
+  const b=event.target.closest('[data-a]');if(!b)return;const action=b.dataset.a;
+  try{
+    if(action==='close')close();
+    else if(action==='register')await register();
+    else if(action==='home'){state.view='home';state.error='';render();}
+    else if(action==='create'){state.view='create';state.error='';render();}
+    else if(action==='join'){state.view='join';state.error='';render();}
+    else if(action==='make')await createRoom();
+    else if(action==='joinroom')await joinRoom();
+    else if(action==='mm')await matchmake(b.dataset.mode||'ffa');
+    else if(action==='ready')await toggleReady();
+    else if(action==='start')await startPrivate();
+    else if(action==='leave')await leaveRoom(true);
+    else if(action==='copy'){try{await navigator.clipboard.writeText(state.room?.room?.room_code||'');}catch(_){}}
+    else if(action==='friends')await loadFriends();
+    else if(action==='addfriend')await addFriend();
+    else if(action==='accept')await acceptFriend(b.dataset.id);
+    else if(action==='remove')await removeFriend(b.dataset.other);
+    else if(action==='resume')close();
+    else if(action==='quit')await quitMatch();
+    else if(action==='again'){await leaveRoom(false);state.room=null;state.result=null;state.view='home';render();}
+    else if(action==='main'){await leaveRoom(false);state.room=null;state.result=null;close();window.DroneArenaOnlineBridge?.showHome?.();}
+  }catch(e){setError(e);render();}
+});
+window.addEventListener('offline',()=>{if(state.inMatch)scheduleReconnect();});
+window.addEventListener('beforeunload',()=>{if(state.channel)try{state.channel.unsubscribe();}catch(_){}});
+})();
