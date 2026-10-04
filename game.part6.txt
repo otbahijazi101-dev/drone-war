@@ -426,7 +426,7 @@
     explosion(position,1.4);
     const affected=foes.filter(e=>!e.dead&&e.mesh.position.distanceTo(position)<7.5+e.radius*.3&&!lineBlocked(position,e.mesh.position));
     if(affected.length)combatLog.missileHits++;
-    for(const e of affected){const damage=Math.min(Math.max(0,e.hp),flightStats().missile);combatLog.damageDealt+=damage;combatLog.lastHit=damage;e.hp-=damage;e.hitReaction=.22;hitTime=.18;}
+    for(const e of affected){const raw=flightStats().missile,limited=e.type==='boss'?Math.min(raw,e.maxHP*.28):raw,damage=Math.min(Math.max(0,e.hp),limited);combatLog.damageDealt+=damage;combatLog.lastHit=damage;e.hp-=damage;e.hitReaction=.22;hitTime=.18;}
     for(const e of affected)if(e.hp<=0)destroyEnemy(e);
   }
   function updateMissiles(dt) {
