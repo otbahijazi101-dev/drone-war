@@ -12,7 +12,8 @@
     if(fpv){camera.position.copy(player.position).addScaledVector(direction,.95).add(V(0,.32,0));camera.lookAt(camera.position.clone().addScaledVector(direction,40));}
     else{const target=player.position.clone().addScaledVector(direction,-13).add(V(0,6,0)),anchor=player.position.clone().add(V(0,1,0)),hit=firstObstacle(anchor,target,.35);if(hit)target.copy(anchor).lerp(target,Math.max(.07,hit.t-.035));camera.position.lerp(target,1-Math.exp(-9*dt));camera.lookAt(player.position.clone().addScaledVector(direction,28).add(V(0,.7,0)));}
     player.visible=!running||(!fpv&&camera.position.distanceTo(player.position)>2.5);
-    const fov=fpv?86:76;if(camera.fov!==fov){camera.fov=fov;camera.updateProjectionMatrix();}
+    const speedRatio=clamp(combatLog.currentSpeed/Math.max(1,flightStats().fast),0,1),targetFov=(fpv?86:76)+speedRatio*(fpv?9:6);
+    const nextFov=damp(camera.fov,targetFov,5.5,dt);if(Math.abs(camera.fov-nextFov)>.02){camera.fov=nextFov;camera.updateProjectionMatrix();}
     if(isChase()){sun.position.set(player.position.x-65,115,player.position.z+50);sun.target.position.set(player.position.x,0,player.position.z);sun.target.updateMatrixWorld();}
     camera.updateMatrixWorld(true);
   }
@@ -115,6 +116,21 @@
     }
   }
 
+  function updatePlayerDamageVisuals(dt){
+    if(!player)return;const ratio=clamp(hp/Math.max(1,maxHP()),0,1),shell=player.userData?.shell;
+    if(shell?.emissive){shell.emissive.setHex(0xff5b2d);shell.emissiveIntensity=(1-ratio)*.18+Math.max(0,damageFlash)*.24;}
+    playerDamageFxTimer-=dt;
+    const weakest=Math.min(...motorHP);
+    player.userData.rotors?.forEach((r,i)=>{const h=motorHP[i]??100,target=h<28?Math.sin(clock*28+i*1.7)*.055:0;r.rotation.x=damp(r.rotation.x,target,9,dt);});
+    if(ratio<.58&&playerDamageFxTimer<=0){
+      const oldIPhone=/iP(hone|od)/.test(navigator.userAgent)&&Math.max(screen.width||0,screen.height||0)<=736;
+      const critical=ratio<.28||weakest<25;playerDamageFxTimer=oldIPhone?(critical?.36:.62):(critical?.16:.34);
+      const pos=player.position.clone().add(V(rand(-.5,.5),rand(-.2,.35),rand(-.35,.45)));
+      particle(pos,critical?0x3a3d39:0x62645e,critical?.65:.46,critical?1.35:.9,velocity.clone().multiplyScalar(-.03).add(V(0,1.3,0)),'smoke');
+      if(critical&&profile.settings.effects!=='low')particle(pos,0xff9d42,.055,.22,V(rand(-2,2),rand(1,4),rand(-2,2)),'spark');
+    }
+  }
+
   function updateEnemies(dt) {
     if(mission?.kind==='race')return;
     if(isChase()){updatePursuers(dt);return;}
@@ -130,12 +146,20 @@
       }
       if(tutorialActive){e.mesh.userData.body.position.y=Math.sin(clock*2+e.phase)*.035;continue;}
       e.stateTime-=dt;updateEnemyEvasion(e,dt);
-      if(e.stateTime<=0){e.stateTime=rand(3,6);e.state=Math.random()<.48?'flank':'attack';e.orbit=Math.random()<.35?-e.orbit:e.orbit;}
+      if(e.stateTime<=0){
+        e.stateTime=rand(2.4,5.4);
+        e.state=e.tactic==='flanker'?'flank':e.tactic==='interceptor'?'intercept':e.tactic==='suppressor'?'suppress':e.tactic==='commander'?(Math.random()<.55?'flank':'attack'):(Math.random()<.35?'flank':'attack');
+        if(Math.random()<.28)e.orbit=-e.orbit;
+      }
       if(e.hp<e.maxHP*.35)e.state='retreat';
-      const anchor=e.attacksAsset&&missionAsset?missionAsset.mesh.position.clone().setY(7):player.position;
-      e.phase+=dt*(e.state==='flank'?.43:.17)*e.orbit;
-      const radius=e.state==='retreat'?53:e.state==='flank'?34:e.type==='boss'?29:e.type==='scout'?23:28;
-      const desiredPosition=anchor.clone().add(V(-Math.sin(e.phase)*radius,Math.sin(e.phase*1.8)*3,-Math.cos(e.phase)*radius));
+      const lead=player.position.clone().addScaledVector(velocity,e.tactic==='interceptor'?.72:e.tactic==='flanker'?.28:.12);
+      const anchor=e.attacksAsset&&missionAsset?missionAsset.mesh.position.clone().setY(7):lead;
+      e.phase+=dt*(e.state==='flank'?.48:e.state==='intercept'?.31:.18)*e.orbit;
+      let radius=e.state==='retreat'?53:e.state==='suppress'?43:e.state==='flank'?35:e.type==='boss'?30:e.type==='scout'?23:28;
+      radius+=(e.squadSlot-1.5)*1.8;
+      const desiredPosition=anchor.clone().add(V(-Math.sin(e.phase)*radius,Math.sin(e.phase*1.8+e.squadSlot)*3.5,-Math.cos(e.phase)*radius));
+      if(e.state==='intercept')desiredPosition.lerp(lead.clone().addScaledVector(heading(),-8),.58);
+      if(e.tactic==='commander'&&foes.filter(o=>!o.dead).length>2)desiredPosition.y+=4;
       desiredPosition.y=clamp(desiredPosition.y,2,31);
       const desiredVelocity=desiredPosition.sub(e.mesh.position);
       if(desiredVelocity.length()>.2)desiredVelocity.normalize().multiplyScalar(e.speed*(e.state==='retreat'?1.3:1));
@@ -151,7 +175,7 @@
       updateEnemyPresentation(e,dt);
       e.fire-=dt;
       if(e.fire<=0&&e.evadeRemaining<=0&&e.mesh.position.distanceTo(target)<90&&!lineBlocked(e.mesh.position,target)){
-        emitBullet(e);e.fire=(Math.max(endlessActive?1.65:3.1,(e.type==='boss'?4.3:6.4)-mission.id*.08)+rand(0,1.4))*difficulty().interval*(endlessActive?endlessFireScale(endlessLevel):1);
+        emitBullet(e);const tacticRate=e.tactic==='suppressor'?.72:e.tactic==='interceptor'?.88:1;e.fire=(Math.max(endlessActive?1.65:3.1,(e.type==='boss'?4.3:6.4)-mission.id*.08)+rand(0,1.4))*difficulty().interval*(endlessActive?endlessFireScale(endlessLevel):1)*tacticRate;
       }
       e.missileTimer-=dt;
       if(e.missileTimer<=0&&e.evadeRemaining<=0&&mission.id>=4&&(e.type==='boss'||e.type==='armored')&&e.mesh.position.distanceTo(player.position)<80){
@@ -174,7 +198,7 @@
     for (const b of bullets) {
       if(!running)break;
       const previous = b.mesh.position.clone(); b.mesh.position.addScaledVector(b.velocity, dt); b.life -= dt;
-      const wall=firstObstacle(previous,b.mesh.position,.1);if(wall){b.mesh.position.copy(previous).lerp(b.mesh.position,Math.max(0,wall.t-.002));b.life=0;impactBurst(b.mesh.position,b.velocity.clone().normalize());}
+      const wall=firstObstacle(previous,b.mesh.position,.1);if(wall){b.mesh.position.copy(previous).lerp(b.mesh.position,Math.max(0,wall.t-.002));b.life=0;if(!damageDestructible(wall.box,flightStats().damage,b.mesh.position,b.velocity.clone().normalize()))impactBurst(b.mesh.position,b.velocity.clone().normalize());}
       for (const e of foes) if (!e.dead && segmentDistanceSq(previous, b.mesh.position, e.mesh.position) < (e.radius+.5)**2) {
         b.life=0;combatLog.primaryHits++;const damage=Math.min(Math.max(0,e.hp),flightStats().damage);combatLog.damageDealt+=damage;combatLog.lastHit=damage;e.hp-=damage;hitTime=.15;noiseSound('metal',.45);enemyImpact(e,b.mesh.position,b.velocity.clone().normalize());if (e.hp <= 0) destroyEnemy(e);break;
       }
@@ -183,7 +207,7 @@
       if(!running)break;
       const previous = b.mesh.position.clone(); b.mesh.position.addScaledVector(b.velocity, dt); b.life -= dt;
       const wall=firstObstacle(previous,b.mesh.position,.1);
-      if(wall){b.mesh.position.copy(previous).lerp(b.mesh.position,Math.max(0,wall.t-.002));b.life=0;impactBurst(b.mesh.position,b.velocity.clone().normalize());}
+      if(wall){b.mesh.position.copy(previous).lerp(b.mesh.position,Math.max(0,wall.t-.002));b.life=0;if(!damageDestructible(wall.box,1,b.mesh.position,b.velocity.clone().normalize()))impactBurst(b.mesh.position,b.velocity.clone().normalize());}
       else if(b.asset&&missionAsset&&segmentDistanceSq(previous,b.mesh.position,missionAsset.mesh.position)<missionAsset.radius**2){b.life=0;hitAsset((5+Math.floor(mission.id/4))*difficulty().damage);impactBurst(b.mesh.position,b.velocity.clone().normalize(),true);}
       else if(segmentDistanceSq(previous,b.mesh.position,player.position)<2.7){b.life=0;damagePlayer((5+Math.floor(mission.id/4))*difficulty().damage*(endlessActive?endlessDamageScale(endlessLevel):1),b.source);impactBurst(b.mesh.position,b.velocity.clone().normalize(),true);}
       else if(!b.nearMiss&&segmentDistanceSq(previous,b.mesh.position,player.position)<40){b.nearMiss=true;noiseSound('flyby');}
@@ -245,6 +269,27 @@
   const reducedEffectsMotion=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
   const effectLimit=()=>Math.min({low:65,medium:150,high:260}[profile.settings.effects],touchActive&&profile.settings.quality!=='high'?80:260);
   const effectDensity=()=>({low:.5,medium:.85,high:1.15}[profile.settings.effects])*(touchActive?.8:1);
+  let atmosphereTimer=0,windPhase=0;
+  function damageDestructible(collider,damage,position,direction=V(0,1,0)){
+    const target=activeDestructibles.find(o=>o?.parent&&o.userData?.destructible?.colliders?.includes(collider));if(!target)return false;
+    const d=target.userData.destructible;d.hp-=Math.max(.5,damage);impactBurst(position,direction,true);
+    if(d.hp<=0){
+      const center=target.getWorldPosition(V());for(const box of d.colliders){const i=activeColliders.indexOf(box);if(i>=0)activeColliders.splice(i,1);}
+      explosion(center,d.kind==='vehicle'?.72:d.kind==='container'?.62:.42);disposeObject(target);score+=d.kind==='vehicle'?35:15;
+    }
+    return true;
+  }
+  function updateAtmosphere(dt){
+    if(!running||!player)return;windPhase+=dt;atmosphereTimer-=dt;if(atmosphereTimer>0)return;
+    const oldIPhone=/iP(hone|od)/.test(navigator.userAgent)&&Math.max(screen.width||0,screen.height||0)<=736;
+    atmosphereTimer=oldIPhone?.58:touchActive?.34:profile.settings.effects==='high'?.14:.24;
+    const map=scene.userData.mapId||'base',palette={base:0xaaa28d,city:0x929b98,ridge:0xa0a08b,chase:0x8f9984,night:0x66717a},color=palette[map]||palette.base;
+    const count=oldIPhone?1:profile.settings.effects==='high'?2:1,wind=V(Math.sin(windPhase*.23)*2.6,.25,1.4+Math.cos(windPhase*.19));
+    for(let i=0;i<count;i++){
+      const angle=rand(0,Math.PI*2),r=rand(12,touchActive?28:42),pos=player.position.clone().add(V(Math.cos(angle)*r,rand(-5,7),Math.sin(angle)*r));
+      if(pos.y<-6.5)pos.y=-6.3;particle(pos,color,rand(.22,.42),rand(1.3,2.2),wind.clone().multiplyScalar(rand(.6,1.15)),'smoke');
+    }
+  }
   function removeParticle(p){scene.remove(p.mesh);p.mesh.material.dispose();}
   function particle(position,color,size,life,velocity,kind='spark',priority=false){
     const limit=effectLimit();
@@ -329,8 +374,13 @@
   }
   function renderWorld(){
     // Shake only the rendered view: aiming, missile lock and flight use the steady camera.
-    if(!running||cameraImpulse<=0||!profile.settings.cameraShake||profile.settings.effects==='low'||reducedEffectsMotion()){renderer.render(scene,camera);return;}
-    const position=camera.position.clone(),quaternion=camera.quaternion.clone(),amount=cameraImpulse*(profile.settings.camera==='fpv'?.45:1);
+    const speedRatio=running?clamp(combatLog.currentSpeed/Math.max(1,flightStats().fast),0,1):0;
+    const groundRush=running?clamp(1-(player.position.y+8)/11,0,1)*speedRatio:0;
+    const oldIPhone=/iP(hone|od)/.test(navigator.userAgent)&&Math.max(screen.width||0,screen.height||0)<=736;
+    const speedFeel=(oldIPhone?.16:touchActive?.28:.48)*(speedRatio*.32+groundRush*.68);
+    const amount=(cameraImpulse*(profile.settings.camera==='fpv'?.45:1))+speedFeel;
+    if(!running||amount<=.002||!profile.settings.cameraShake||profile.settings.effects==='low'||reducedEffectsMotion()){renderer.render(scene,camera);return;}
+    const position=camera.position.clone(),quaternion=camera.quaternion.clone();
     try{
       camera.translateX(Math.sin(clock*49)*amount*.075);camera.translateY(Math.sin(clock*61)*amount*.05);
       camera.rotateZ(Math.sin(clock*43)*amount*.004);camera.updateMatrixWorld(true);renderer.render(scene,camera);
@@ -360,7 +410,7 @@
       m.mesh.userData.flame.scale.y = .85 + Math.random() * .25;
       m.smoke -= dt;
       if (m.smoke <= 0) { m.smoke=touchActive?.08:.05;particle(m.mesh.position,0xc7c7bc,.45,.85,V(0,.9,0),'smoke'); }
-      const wall=firstObstacle(previous,m.mesh.position,.2);if(wall){m.mesh.position.copy(previous).lerp(m.mesh.position,Math.max(0,wall.t-.01));detonate(m);}
+      const wall=firstObstacle(previous,m.mesh.position,.2);if(wall){m.mesh.position.copy(previous).lerp(m.mesh.position,Math.max(0,wall.t-.01));damageDestructible(wall.box,7,m.mesh.position,m.direction);detonate(m);}
       for (const e of foes) if (!e.dead && segmentDistanceSq(previous, m.mesh.position, e.mesh.position) < (e.radius+.9)**2) { detonate(m); break; }
       if (m.mesh.position.y < -7) m.life = 0;
     }
