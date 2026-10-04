@@ -1,4 +1,4 @@
-var CACHE_NAME='drone-war-offline-v8-right-click-missile';
+var CACHE_NAME='drone-war-offline-v9-missile-2s';
 var CORE=[
   '/',
   '/manifest.webmanifest',
