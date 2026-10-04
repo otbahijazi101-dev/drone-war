@@ -1,0 +1,34 @@
+15px;background:#1c1716e8;border:1px solid #d58a7966;text-align:center}.dw-respawn strong{display:block}.dw-respawn span{font:700 10px Consolas;color:#eeb6aa}
+@media(max-width:700px){.dw-online{padding:7px}.dw-card{padding:13px;border-radius:16px}.dw-grid{grid-template-columns:1fr}.dw-tile{min-height:75px}.dw-head h2{font-size:21px}.dw-hud{top:6px;min-width:220px}}
+`;
+document.head.appendChild(style);
+
+const overlay=document.createElement('div');overlay.className='dw-online';overlay.id='dwOnline';overlay.innerHTML='<section class="dw-card" id="dwCard"></section>';document.body.appendChild(overlay);
+const hud=document.createElement('div');hud.className='dw-hud';hud.id='dwHud';document.body.appendChild(hud);
+const respawnOverlay=document.createElement('div');respawnOverlay.className='dw-respawn';respawnOverlay.id='dwRespawn';respawnOverlay.innerHTML='<div><strong>DRONE DÜŞÜRÜLDÜ</strong><span>3 SANİYE SONRA YENİDEN DOĞUŞ</span></div>';document.body.appendChild(respawnOverlay);
+
+function saveIdentity(){try{localStorage.setItem(STORE,JSON.stringify(state.identity));}catch(_){}}
+function clearIdentity(){state.identity=null;try{localStorage.removeItem(STORE);}catch(_){}}
+function myId(){return state.identity?.player?.id||'';}
+function myMember(){return state.room?.players?.find(x=>x.player_id===myId())||null;}
+function memberById(id){return state.room?.players?.find(x=>x.player_id===id)||null;}
+function memberProfile(m){return Array.isArray(m?.online_players)?m.online_players[0]:m?.online_players;}
+function memberName(m){return memberProfile(m)?.display_name||'Oyuncu';}
+function memberCode(m){return memberProfile(m)?.friend_code||'';}
+function setError(e){state.error=String(e?.message||e||'Bir hata oluştu');}
+
+async function api(action,data={}){
+  const body={action,...data};
+  if(state.identity?.player?.id){body.player_id=state.identity.player.id;body.token=state.identity.token;}
+  const res=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','apikey':SUPABASE_KEY},body:JSON.stringify(body)});
+  const out=await res.json().catch(()=>({error:'Sunucu yanıtı okunamadı'}));
+  if(!res.ok||out.error)throw new Error(out.error||('HTTP '+res.status));
+  return out;
+}
+
+function header(title,sub,closable=true){return `<div class="dw-head"><div><h2>${esc(title)}</h2><p>${esc(sub||'')}</p></div>${closable?'<button class="dw-x" data-a="close">×</button>':''}</div>`;}
+function errorHtml(){return state.error?`<div class="dw-error">${esc(state.error)}</div>`:'';}
+function profileHtml(){if(!state.identity?.player)return '';return `<div class="dw-profile"><div><b>${esc(state.identity.player.display_name)}</b><small class="dw-muted">ARKADAŞ KODU</small></div><code>${esc(state.identity.player.friend_code)}</code></div>`;}
+function setupHtml(){return header('Drone War Online','Online profil için bir pilot adı seç.')+errorHtml()+`<div class="dw-field"><label>PİLOT ADI</label><input id="dwName" maxlength="20" placeholder="Örn. Falcon"></div><div class="dw-row"><button class="dw-btn primary" data-a="register">PROFİL OLUŞTUR</button><button class="dw-btn" data-a="close">VAZGEÇ</button></div><p class="dw-muted">E-posta gerekmiyor. Chat yok. Tek oyuncu kaydın ayrı kalır.</p>`;}
+function homeHtml(){return header('Online Savaş','2–4 oyuncu · gerçek zamanlı · chat yok')+errorHtml()+profileHtml()+`<div class="dw-grid" style="margin-top:12px"><button class="dw-tile primary" data-a="mm" data-mode="ffa"><strong>HIZLI MAÇ · FFA</strong><span>2–4 oyuncu. İlk 10 düşürme kazanır.</span></button><button class="dw-tile primary" data-a="mm" data-mode="2v2"><strong>HIZLI MAÇ · 2v2</strong><span>4 oyuncu. İlk 15 takım düşürmesi kazanır.</span></button><button class="dw-tile primary" data-a="mm" data-mode="coop_boss"><strong>HIZLI MAÇ · CO-OP BOSS</strong><span>2–4 pilot aynı boss'a karşı.</span></button><button class="dw-tile" data-a="create"><strong>ÖZEL ODA</strong><span>Mod, harita ve oyuncu sayısını seç.</span></button><button class="dw-tile" data-a="join"><strong>ODA KODUYLA KATIL</strong><span>6 karakterli oda kodunu gir.</span></button><button class="dw-tile" data-a="friends"><strong>ARKADAŞLAR</strong><span>Kodla ekle ve istekleri yönet.</span></button></div>`;}
+function createHtml(){return header('Özel Oda','Mod ve harita seç.')+errorHtml()+`<div class="dw-fields"><div class="dw-field"><label>MOD</label><select id="dwMode"><option value="ffa">Free For All</option><option value="2v2">2v2</option><option value="coop_boss">Co-op Boss</option></select></div><div class="dw-field"><label>HARİTA</label><select id="dwMap"><option value="base">Hava Üssü</option><option value="city">Şehir</option><option value="ridge">Dağ Sırtı</option><option value="night">Gece Üssü</option></select></div><div class="dw-field"><label>AZAMİ</label><select 
