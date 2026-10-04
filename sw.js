@@ -1,4 +1,4 @@
-var CACHE_NAME='drone-war-offline-v14-cinematic-missiles';
+var CACHE_NAME='drone-war-offline-v15-online-multiplayer';
 var CORE=[
   '/',
   '/manifest.webmanifest',
@@ -9,7 +9,15 @@ var CORE=[
   '/game.part4.txt',
   '/game.part5.txt',
   '/game.part6.txt',
-  '/game.part7.txt'
+  '/game.part7.txt',
+  '/online-loader.js',
+  '/online.part1.txt',
+  '/online.part2.txt',
+  '/online.part3.txt',
+  '/online.part4.txt',
+  '/online.part5.txt',
+  '/online.part6.txt',
+  '/online.part7.txt'
 ];
 
 self.addEventListener('install',function(event){
