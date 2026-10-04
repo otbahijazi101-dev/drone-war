@@ -1,4 +1,4 @@
-var CACHE_NAME='drone-war-offline-v6-barrel-roll';
+var CACHE_NAME='drone-war-offline-v7-realistic-arena';
 var CORE=[
   '/',
   '/manifest.webmanifest',
