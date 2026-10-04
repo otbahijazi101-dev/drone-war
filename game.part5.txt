@@ -67,6 +67,15 @@
   const targetLockTime = () => flightStats().lock;
   let lockTarget = null, lockTime = 0, last = 0, noticeTime = 0, radarClock = 0;
   let yaw = 0, targetYaw = 0, altitudeTarget = 8;
+  let flipActive=false,flipAngle=0,flipCooldown=0;
+  const FLIP_DURATION=.72,FLIP_RECHARGE=1.15;
+  function startFlip(){
+    if(!running||flipActive||flipCooldown>0||landingAssist>=0)return false;
+    flipActive=true;flipAngle=0;flipCooldown=FLIP_RECHARGE;
+    velocity.y=Math.max(velocity.y,1.5);
+    altitudeTarget=Math.min(flightCeiling(),Math.max(altitudeTarget,player.position.y+.8));
+    notify('TAKLA · 360°');sound(520,.09,.025);return true;
+  }
   const velocity = V(), joy = {x: 0, y: 0};
   let keys = {}, ascend = false, descend = false;
   let lastMouseX = null, lastMouseY = null, lookPointer = null, lastTouchX = 0, lastTouchY = 0;
@@ -380,6 +389,11 @@
     drone.userData.rotors.forEach((r, i) => { r.rotation.y += dt * (fast ? 95 : 70) * (i % 2 ? -1 : 1) * (drone===player?(motorHP[i]<=0?0:.28+.72*motorHP[i]/100):1); });
   }
   function updatePlayer(dt) {
+    flipCooldown=Math.max(0,flipCooldown-dt);
+    if(flipActive){
+      flipAngle+=Math.PI*2*dt/FLIP_DURATION;
+      if(flipAngle>=Math.PI*2){flipAngle=0;flipActive=false;}
+    }
     const previousPosition=player.position.clone();
     const forward = clamp((pressed('forward') ? 1 : 0) - (pressed('backward') ? 1 : 0) - joy.y, -1, 1);
     const turn = clamp((pressed('left') ? 1 : 0) - (pressed('right') ? 1 : 0) - joy.x, -1, 1);
@@ -397,4 +411,9 @@
     velocity.y=damp(velocity.y,vertical,8,dt);player.position.y+=velocity.y*dt;resolvePlayerCollision(previousPosition,dt);
     player.rotation.y = yaw;
     const body = player.userData.body;
-    body.rotation.x = damp(body.rotation.x, -forward * .11, 7, dt);
+    const normalPitch=-forward*.11;
+    if(flipActive)body.rotation.x=normalPitch-flipAngle;
+    else{
+      const normalizedPitch=Math.atan2(Math.sin(body.rotation.x),Math.cos(body.rotation.x));
+      body.rotation.x=damp(normalizedPitch,normalPitch,7,dt);
+    }
