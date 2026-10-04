@@ -190,7 +190,12 @@
       e.velocity.lerp(desiredVelocity,1-Math.exp(-(e.evadeRemaining>0?9:2.2)*dt));e.mesh.position.addScaledVector(e.velocity,dt);
       e.mesh.position.x=clamp(e.mesh.position.x,-98,98);e.mesh.position.z=clamp(e.mesh.position.z,-98,98);e.mesh.position.y=clamp(e.mesh.position.y,1,33);
       avoidEnemyObstacle(e,previousEnemy);
-      const target=e.attacksAsset&&missionAsset?missionAsset.mesh.position:player.position;
+      let target=e.attacksAsset&&missionAsset?missionAsset.mesh.position:player.position;
+      if(onlineActive&&onlineMode==='coop_boss'&&onlineIsHost&&e.type==='boss'){
+        let bestTarget=player.position,bestDist=e.mesh.position.distanceToSquared(player.position);
+        for(const r of onlineRemotes.values())if(r.kind==='player'&&!r.dead&&r.mesh.visible){const dist=e.mesh.position.distanceToSquared(r.mesh.position);if(dist<bestDist){bestDist=dist;bestTarget=r.mesh.position;}}
+        target=bestTarget;
+      }
       const direction=target.clone().sub(e.mesh.position).normalize();
       e.mesh.quaternion.slerp(new T.Quaternion().setFromUnitVectors(FORWARD,direction),1-Math.exp(-3*dt));
       updateEnemyPresentation(e,dt);
@@ -235,6 +240,13 @@
       if(wall){b.mesh.position.copy(previous).lerp(b.mesh.position,Math.max(0,wall.t-.002));b.life=0;if(!damageDestructible(wall.box,1,b.mesh.position,b.velocity.clone().normalize()))impactBurst(b.mesh.position,b.velocity.clone().normalize());}
       else if(b.asset&&missionAsset&&segmentDistanceSq(previous,b.mesh.position,missionAsset.mesh.position)<missionAsset.radius**2){b.life=0;hitAsset((5+Math.floor(mission.id/4))*difficulty().damage);impactBurst(b.mesh.position,b.velocity.clone().normalize(),true);}
       else if(segmentDistanceSq(previous,b.mesh.position,player.position)<2.7){b.life=0;damagePlayer((5+Math.floor(mission.id/4))*difficulty().damage*(endlessActive?endlessDamageScale(endlessLevel):1),b.source);impactBurst(b.mesh.position,b.velocity.clone().normalize(),true);}
+      else if(onlineActive&&onlineMode==='coop_boss'&&onlineIsHost){
+        let hitRemote=false;
+        for(const r of onlineRemotes.values())if(r.kind==='player'&&!r.dead&&r.mesh.visible&&segmentDistanceSq(previous,b.mesh.position,r.mesh.position)<2.7){
+          b.life=0;hitRemote=true;window.DroneArenaOnlineNet?.onBossProjectileHit?.(r.id,(5+Math.floor((mission?.id||10)/4))*difficulty().damage);impactBurst(b.mesh.position,b.velocity.clone().normalize(),true);break;
+        }
+        if(!hitRemote&&!b.nearMiss&&segmentDistanceSq(previous,b.mesh.position,player.position)<40){b.nearMiss=true;noiseSound('flyby');registerNearMiss();}
+      }
       else if(!b.nearMiss&&segmentDistanceSq(previous,b.mesh.position,player.position)<40){b.nearMiss=true;noiseSound('flyby');registerNearMiss();}
     }
     const keep = b => { if (b.life > 0) return true; scene.remove(b.mesh); return false; };
@@ -243,6 +255,7 @@
   function updateLock(dt) {
     const direction=camera.getWorldDirection(V());let candidate=null,best=touchActive?.94:.957;
     if(onlineActive){
+      if(onlineMode==='coop_boss'&&onlineIsHost)for(const e of foes){if(e.dead||e.type!=='boss')continue;const delta=e.mesh.position.clone().sub(camera.position);if(e.mesh.position.distanceTo(player.position)>CFG.lockRange||lineBlocked(player.position,e.mesh.position))continue;const similarity=delta.normalize().dot(direction);if(similarity>best){best=similarity;candidate=e;}}
       for(const r of onlineRemotes.values()){if(!onlineCanTarget(r)||!r.mesh.visible)continue;const delta=r.mesh.position.clone().sub(camera.position);if(r.mesh.position.distanceTo(player.position)>CFG.lockRange||lineBlocked(player.position,r.mesh.position))continue;const similarity=delta.normalize().dot(direction);if(similarity>best){best=similarity;candidate=r;}}
     }else{
       for(const e of foes){if(e.dead)continue;const delta=e.mesh.position.clone().sub(camera.position);if(e.mesh.position.distanceTo(player.position)>CFG.lockRange||lineBlocked(player.position,e.mesh.position))continue;const similarity=delta.normalize().dot(direction);if(similarity>best){best=similarity;candidate=e;}}
