@@ -125,7 +125,8 @@
     catch(_){settingsMessage='Bu tarayıcı tam ekranı açamadı. Pencereyi büyüterek oynayabilirsin.';}
     if(['settings','home'].includes(activeView))renderPanel();else if(settingsMessage)notify(settingsMessage);
   }
-  const pressed=action=>!!keys[profile.settings.bindings[action]]||(action==='boost'&&touchBoost);
+  let gamepadButtons={};
+  const pressed=action=>!!keys[profile.settings.bindings[action]]||(action==='boost'&&touchBoost)||!!gamepadButtons[action];
   const steel = (color, roughness = .68, metalness = .18) => new T.MeshStandardMaterial({color, roughness, metalness});
   function mesh(parent, geometry, material, x = 0, y = 0, z = 0) {
     const m = new T.Mesh(geometry, material);
@@ -222,6 +223,7 @@
   addSandbagLine(airfield,-92,-24,11,0); addSandbagLine(airfield,92,22,11,Math.PI);
   addHelipad(airfield,54,54,7.8); addHelipad(airfield,-58,54,7.8);
   scatterRocks(airfield,18,285);
+  for(const [x,z,r] of [[-76,74,.2],[-62,74,.2],[72,-72,-.15],[86,-72,-.15],[-96,4,Math.PI/2],[96,-6,Math.PI/2]])addBreakableBarrier(airfield,x,z,r);
 
   const mapRoots={base:airfield};let nightLights=null;
   function addFenceLine(root, x1, z1, x2, z2, posts=12){
@@ -244,6 +246,7 @@
   function addContainer(root,x,y,z,color=0x768087,rot=0,scale=1){
     const side=steel(color,.82,.22), rib=steel(0x495154,.92,.08), frame=steel(0xc3a862,.54,.20);
     const g=new T.Group();g.position.set(x,y,z);g.rotation.y=rot;g.scale.setScalar(scale);root.add(g);
+    g.userData.destructible={hp:12,maxHp:12,kind:'container',colliders:[]};(root.userData.destructibles||(root.userData.destructibles=[])).push(g);
     box(g,side,12,5.2,5);box(g,rib,12.1,.18,5.1,0,2.25,0);box(g,rib,12.1,.18,5.1,0,-2.25,0);
     for(let rx=-5.1;rx<=5.1;rx+=1.7)box(g,rib,.10,4.8,5.08,rx,0,0);
     for(const sx of [-1,1]){box(g,frame,.18,5.4,5.2,sx*5.95,0,0);box(g,frame,.25,.25,5.22,sx*5.9,2.55,0);box(g,frame,.25,.25,5.22,sx*5.9,-2.55,0);} 
@@ -263,6 +266,7 @@
   }
   function addServiceTruck(root,x,z,rot=0,color=0x7b8a8c){
     const g=new T.Group();g.position.set(x,-7.2,z);g.rotation.y=rot;root.add(g);
+    g.userData.destructible={hp:8,maxHp:8,kind:'vehicle',colliders:[]};(root.userData.destructibles||(root.userData.destructibles=[])).push(g);
     const cab=steel(color,.74,.20), dark=steel(0x3b4246,.86,.10), glass=steel(0x53788c,.26,.58), wheel=steel(0x161b1e,.98,0);
     box(g,cab,4.6,1.7,2.7,0,1.2,0);box(g,cab,2.2,1.5,2.5,-2.9,1.35,0);box(g,glass,1.5,.75,2.35,-3.25,1.7,0);
     box(g,dark,7.4,.28,2.95,0,.38,0);for(const wx of [-2.7,-.9,1.7,3.1])for(const wz of [-1,1]){const w=mesh(g,new T.CylinderGeometry(.56,.56,.44,12),wheel,wx,0,wz*1.25);w.rotation.z=Math.PI/2;}
@@ -279,6 +283,14 @@
   function addHelipad(root,x,z,size=11){
     const mark=steel(0xd9d6c5,.94,0), pad=mesh(root,new T.RingGeometry(size,size+.38,64),mark,x,-7.93,z);pad.rotation.x=-Math.PI/2;
     box(root,mark,size*1.1,.02,.65,x,-7.92,z);box(root,mark,.65,.02,size*1.25,x,-7.92,z);
+  }
+  function addBreakableBarrier(root,x,z,rot=0){
+    const mat=steel(0x8f9188,.96,.04),stripe=steel(0xc8aa58,.72,.12);
+    const g=new T.Group();g.position.set(x,-7.2,z);g.rotation.y=rot;root.add(g);
+    g.userData.destructible={hp:4,maxHp:4,kind:'barrier',colliders:[]};(root.userData.destructibles||(root.userData.destructibles=[])).push(g);
+    const core=box(g,mat,4.2,1.45,1.05,0,.55,0);core.userData.destructible=true;
+    const band=box(g,stripe,.35,1.5,1.08,0,.56,0);band.userData.destructible=true;
+    return g;
   }
   function scatterRocks(root,count=28,radius=240){
     const rock=steel(0x73776f,1,0);
@@ -328,6 +340,7 @@
     addContainer(root,-146,-5.45,16,0x7a7d73,Math.PI/2,1); addContainer(root,148,-5.45,-20,0x6b7381,Math.PI/2,1);
     addWatchTower(root,-144,144,17); addWatchTower(root,144,-144,17);
     addLightPole(root,-18,0,14); addLightPole(root,18,0,14);
+    for(const [x,z,r] of [[-78,54,.1],[-64,54,.1],[66,-48,-.15],[82,-48,-.15],[-44,-84,Math.PI/2],[44,84,Math.PI/2]])addBreakableBarrier(root,x,z,r);
     return root;
   }
   function buildRidge(){
@@ -358,6 +371,7 @@
     addFenceLine(root,-108,-108,-108,108,14); addFenceLine(root,108,-108,108,108,14);
     addHelipad(root,-36,42,7.5); addServiceTruck(root,-48,26,.3,0x64756b); addContainer(root,84,-5.45,-104,0x736d61,.06,1);
     addSandbagLine(root,-120,-62,12,Math.PI/2); addWatchTower(root,118,114,16); scatterRocks(root,22,250);
+    for(const [x,z,r] of [[-74,68,.15],[-60,68,.15],[70,-62,-.12],[84,-62,-.12]])addBreakableBarrier(root,x,z,r);
     return root;
   }
   function buildNightLights(){
@@ -412,6 +426,7 @@
     addServiceTruck(root,102,118,.2,0x7d8a73); addServiceTruck(root,-122,-96,-.45,0x8b8068);
     addContainer(root,-210,-5.45,222,0x727f89,.2,1); addContainer(root,-198,-5.45,222,0x7b6d63,.2,1); addContainer(root,258,-5.45,-208,0x66746b,-.3,1);
     addSandbagLine(root,22,386,14,0); scatterRocks(root,30,560);
+    for(const [x,z,r] of [[-330,40,.1],[-315,40,.1],[330,-40,-.1],[315,-40,-.1],[-40,330,Math.PI/2],[-40,315,Math.PI/2],[40,-330,Math.PI/2],[40,-315,Math.PI/2]])addBreakableBarrier(root,x,z,r);
     return root;
   }
   function prepareMapColliders(root,key){
@@ -423,7 +438,12 @@
       }
     }
     root.updateMatrixWorld(true);const colliders=[...(root.userData.extraColliders||[])];
-    root.traverse(o=>{if(o.isMesh&&!o.isInstancedMesh&&o.geometry?.type==='BoxGeometry'&&o.geometry.parameters.height>1){const b=new T.Box3().setFromObject(o);colliders.push(b);}});
+    for(const d of (root.userData.destructibles||[]))if(d.userData?.destructible)d.userData.destructible.colliders=[];
+    root.traverse(o=>{if(o.isMesh&&!o.isInstancedMesh&&o.geometry?.type==='BoxGeometry'&&o.geometry.parameters.height>1){
+      const b=new T.Box3().setFromObject(o);colliders.push(b);
+      let owner=o;while(owner&&owner!==root&&!owner.userData?.destructible)owner=owner.parent;
+      if(owner?.userData?.destructible)owner.userData.destructible.colliders.push(b);
+    }});
     root.userData.flightColliders=colliders;return colliders;
   }
   function setupChaseMarkers(){
@@ -444,7 +464,7 @@
     scene.background.setHex(map.sky);scene.fog.color.setHex(map.fog);scene.fog.near=map.near;scene.fog.far=map.far;
     hemisphere.color.setHex(map.hemi);hemisphere.groundColor.setHex(map.ground);hemisphere.intensity=map.ambient;
     sun.color.setHex(map.sun);sun.intensity=map.light;renderer.toneMappingExposure=map.id==='night'?1.25:1.02;
-    activeColliders=prepareMapColliders(mapRoots[key],key);packEnvironment(mapRoots[key]);camera.far=map.id==='chase'?1900:620;camera.updateProjectionMatrix();
+    activeColliders=prepareMapColliders(mapRoots[key],key);activeDestructibles=(mapRoots[key].userData.destructibles||[]);packEnvironment(mapRoots[key]);camera.far=map.id==='chase'?1900:620;camera.updateProjectionMatrix();
     if(!sun.target.parent)scene.add(sun.target);sun.position.set(-65,115,50);sun.target.position.set(0,0,0);
     scene.userData.mapId=map.id;
   }
