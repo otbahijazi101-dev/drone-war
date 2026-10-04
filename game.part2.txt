@@ -54,7 +54,7 @@
     root.userData.touchPacked=true;
   }
   function phoneControlsHTML(){
-    return `<div class="phone-control-guide"><div><b>SOL ÇUBUK</b><span>Yukarı / aşağı: ileri / geri. Sağa / sola: drone’u döndür.</span></div><div><b>SAĞ EKRANI SÜRÜKLE</b><span>Yatay: yön değiştir. Dikey: yüksel / alçal.</span></div><div><b>ATEŞE BASILI TUT + SÜRÜKLE</b><span>Seri ateş ederken aynı parmakla yönünü ve irtifanı ayarla. Bırakınca atış durur.</span></div><div><b>TAKVİYE</b><span>Bir kez dokun, ardından çubuğu ileri it. Çubuğu bırakınca takviye kapanır.</span></div><div><b>FÜZE / DOLDUR</b><span>Hedefe bak; FIRLAT yazınca FÜZE’ye dokun. DOLDUR şarjörü yeniler.</span></div><div><b>KAMERA / İNİŞ</b><span>Üstteki kamera düğmesi FPV’yi değiştirir. Büyük Kaçış’ta tamir alanına yaklaşınca İN / TAMİR’e dokun.</span></div><div><b>KUMANDA DÜZENİ</b><span>Ayarlar → Telefon kumandası: boyut ve görünürlük. Kumandaları yerleştir: sürükle, tek tek boyutlandır ve kaydet.</span></div></div>`;
+    return `<div class="phone-control-guide"><div><b>UÇUŞ</b><span>Sol çubuğu sürükle: ileri / geri git ve drone’u döndür.</span></div><div><b>ATEŞ</b><span>Sağdaki büyük ATEŞ düğmesine basılı tut. Parmağını sürükleyerek nişan ve irtifayı da ayarla.</span></div><div><b>FÜZE</b><span>Hedef kilitlenince FÜZE’ye bir kez dokun.</span></div><div><b>İKİNCİL</b><span>TAKVİYE hız verir. ↻ düğmesi silahı doldurur. Kamera ve mola üstte kalır.</span></div></div>`;
   }
   function phoneHomeHTML(){
     if(!touchActive)return '';
