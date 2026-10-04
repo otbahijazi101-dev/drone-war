@@ -269,7 +269,7 @@
   const reducedEffectsMotion=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
   const effectLimit=()=>Math.min({low:65,medium:150,high:260}[profile.settings.effects],touchActive&&profile.settings.quality!=='high'?80:260);
   const effectDensity=()=>({low:.5,medium:.85,high:1.15}[profile.settings.effects])*(touchActive?.8:1);
-  let atmosphereTimer=0,windPhase=0;
+  let atmosphereTimer=0,windPhase=0,weatherTimer=22,weatherMode='clear',dayPhase=.18;
   function damageDestructible(collider,damage,position,direction=V(0,1,0)){
     const target=activeDestructibles.find(o=>o?.parent&&o.userData?.destructible?.colliders?.includes(collider));if(!target)return false;
     const d=target.userData.destructible;d.hp-=Math.max(.5,damage);impactBurst(position,direction,true);
@@ -280,14 +280,26 @@
     return true;
   }
   function updateAtmosphere(dt){
-    if(!running||!player)return;windPhase+=dt;atmosphereTimer-=dt;if(atmosphereTimer>0)return;
+    if(!running||!player)return;
+    const mapId=scene.userData.mapId||'base',map=mapById(mapId),fixedNight=mapId==='night';
+    windPhase+=dt;dayPhase=(dayPhase+dt*(isChase()?.0028:.0042))%1;weatherTimer-=dt;
+    if(weatherTimer<=0){const modes=['clear','haze','gust'];weatherMode=modes[Math.floor(Math.random()*modes.length)];weatherTimer=rand(28,48);}
+    const cycle=fixedNight?.08:.5+.5*Math.sin(dayPhase*Math.PI*2),daylight=fixedNight?.24:.32+.68*Math.pow(clamp(cycle,0,1),.55);
+    const weatherLight=weatherMode==='haze'?.86:weatherMode==='gust'?.94:1;
+    sun.intensity=damp(sun.intensity,map.light*daylight*weatherLight,1.2,dt);hemisphere.intensity=damp(hemisphere.intensity,map.ambient*(.58+.42*daylight),1.1,dt);
+    if(!isChase()){sun.position.x=Math.cos(dayPhase*Math.PI*2)*115;sun.position.y=45+Math.max(0,cycle)*95;sun.position.z=Math.sin(dayPhase*Math.PI*2)*95;}
+    const fogFactor=weatherMode==='haze'?.62:weatherMode==='gust'?.82:1,nightFog=fixedNight?.72:(.72+.28*daylight);
+    scene.fog.near=damp(scene.fog.near,map.near*fogFactor*nightFog,1.2,dt);scene.fog.far=damp(scene.fog.far,map.far*fogFactor*(fixedNight?.82:1),1.2,dt);
+
+    atmosphereTimer-=dt;if(atmosphereTimer>0)return;
     const oldIPhone=/iP(hone|od)/.test(navigator.userAgent)&&Math.max(screen.width||0,screen.height||0)<=736;
     atmosphereTimer=oldIPhone?.58:touchActive?.34:profile.settings.effects==='high'?.14:.24;
-    const map=scene.userData.mapId||'base',palette={base:0xaaa28d,city:0x929b98,ridge:0xa0a08b,chase:0x8f9984,night:0x66717a},color=palette[map]||palette.base;
-    const count=oldIPhone?1:profile.settings.effects==='high'?2:1,wind=V(Math.sin(windPhase*.23)*2.6,.25,1.4+Math.cos(windPhase*.19));
+    const palette={base:0xaaa28d,city:0x929b98,ridge:0xa0a08b,chase:0x8f9984,night:0x66717a},color=palette[mapId]||palette.base;
+    const count=oldIPhone?1:profile.settings.effects==='high'?2:1,gust=weatherMode==='gust'?1.8:weatherMode==='haze'?.7:1;
+    const wind=V(Math.sin(windPhase*.23)*2.6,.25,1.4+Math.cos(windPhase*.19)).multiplyScalar(gust);
     for(let i=0;i<count;i++){
       const angle=rand(0,Math.PI*2),r=rand(12,touchActive?28:42),pos=player.position.clone().add(V(Math.cos(angle)*r,rand(-5,7),Math.sin(angle)*r));
-      if(pos.y<-6.5)pos.y=-6.3;particle(pos,color,rand(.22,.42),rand(1.3,2.2),wind.clone().multiplyScalar(rand(.6,1.15)),'smoke');
+      if(pos.y<-6.5)pos.y=-6.3;particle(pos,color,rand(.22,.42)*(weatherMode==='haze'?1.35:1),rand(1.3,2.2),wind.clone().multiplyScalar(rand(.6,1.15)),'smoke');
     }
   }
   function removeParticle(p){scene.remove(p.mesh);p.mesh.material.dispose();}
