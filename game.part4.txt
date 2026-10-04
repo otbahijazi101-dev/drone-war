@@ -212,8 +212,81 @@
   box(airfield,concrete,8,1,8,148,16,28);
   box(airfield,steel(0x576b73,.23,.4),7,4,7,148,18.5,28);
   box(airfield,darkMetal,9,.45,9,148,20.8,28);
+  addFenceLine(airfield,-126,-112,126,-112,15); addFenceLine(airfield,-126,112,126,112,15);
+  addFenceLine(airfield,-126,-112,-126,112,13); addFenceLine(airfield,126,-112,126,112,13);
+  addWatchTower(airfield,-132,-118,18); addWatchTower(airfield,132,118,18);
+  addLightPole(airfield,-118,-22,13); addLightPole(airfield,-118,48,13); addLightPole(airfield,118,-32,13); addLightPole(airfield,118,58,13);
+  addServiceTruck(airfield,-54,-118,.1,0x7b887f); addServiceTruck(airfield,52,-118,-.08,0x8b7f60);
+  addContainer(airfield,-136,-5.45,-66,0x7b7f83,.1,1); addContainer(airfield,-136,-5.45,-59,0x6d7f78,.1,1);
+  addContainer(airfield,136,-5.45,54,0x7a7063,-.08,1); addContainer(airfield,136,-5.45,61,0x5f6e77,-.08,1);
+  addSandbagLine(airfield,-92,-24,11,0); addSandbagLine(airfield,92,22,11,Math.PI);
+  addHelipad(airfield,54,54,7.8); addHelipad(airfield,-58,54,7.8);
+  scatterRocks(airfield,18,285);
 
   const mapRoots={base:airfield};let nightLights=null;
+  function addFenceLine(root, x1, z1, x2, z2, posts=12){
+    const fenceMetal=steel(0x6f787a,.72,.42), fenceMesh=steel(0x8f9898,.94,.08);
+    const dx=x2-x1,dz=z2-z1,len=Math.hypot(dx,dz),angle=Math.atan2(dz,dx);
+    const midX=(x1+x2)/2,midZ=(z1+z2)/2;
+    const rail=box(root,fenceMetal,.10,3.8,len,midX,-5.9,midZ);rail.rotation.y=-angle;
+    const top=box(root,fenceMetal,.12,.10,len+0.6,midX,-4.15,midZ);top.rotation.y=-angle;
+    const bot=box(root,fenceMetal,.10,.10,len+0.4,midX,-7.15,midZ);bot.rotation.y=-angle;
+    for(let i=0;i<=posts;i++){
+      const f=i/posts,x=x1+dx*f,z=z1+dz*f;
+      strut(root,V(x,-8,z),V(x,-4.2,z),.09,fenceMetal);
+      if(i<posts){
+        const segLen=len/posts;
+        const meshPanel=mesh(root,new T.PlaneGeometry(segLen*.92,2.6),fenceMesh,x+dx/posts/2,-5.8,z+dz/posts/2);
+        meshPanel.rotation.y=-angle+Math.PI/2;
+      }
+    }
+  }
+  function addContainer(root,x,y,z,color=0x768087,rot=0,scale=1){
+    const side=steel(color,.82,.22), rib=steel(0x495154,.92,.08), frame=steel(0xc3a862,.54,.20);
+    const g=new T.Group();g.position.set(x,y,z);g.rotation.y=rot;g.scale.setScalar(scale);root.add(g);
+    box(g,side,12,5.2,5);box(g,rib,12.1,.18,5.1,0,2.25,0);box(g,rib,12.1,.18,5.1,0,-2.25,0);
+    for(let rx=-5.1;rx<=5.1;rx+=1.7)box(g,rib,.10,4.8,5.08,rx,0,0);
+    for(const sx of [-1,1]){box(g,frame,.18,5.4,5.2,sx*5.95,0,0);box(g,frame,.25,.25,5.22,sx*5.9,2.55,0);box(g,frame,.25,.25,5.22,sx*5.9,-2.55,0);} 
+    return g;
+  }
+  function addLightPole(root,x,z,height=12){
+    const pole=steel(0x434b4d,.76,.36), lampMat=new T.MeshBasicMaterial({color:0xffdfa8,toneMapped:false});
+    strut(root,V(x,-8,z),V(x,height,z),.12,pole);box(root,pole,2.2,.14,.35,x,height,z);
+    for(const dx of [-.7,.7])box(root,lampMat,.55,.22,.42,x+dx,height-.08,z);
+  }
+  function addWatchTower(root,x,z,h=19){
+    const metal=steel(0x556164,.72,.42), wall=steel(0x94a09e,.68,.18), glass=steel(0x4e758a,.32,.56);
+    for(const sx of [-1,1])for(const sz of [-1,1])strut(root,V(x+sx*1.8,-8,z+sz*1.8),V(x+sx*1.2,h,z+sz*1.2),.16,metal);
+    box(root,metal,5,.18,5,x,h,z);box(root,wall,4.3,2.6,4.3,x,h+1.5,z);box(root,metal,4.8,.22,4.8,x,h+2.95,z);
+    box(root,glass,3.7,1.2,.05,x,h+1.55,z+2.18);box(root,glass,3.7,1.2,.05,x,h+1.55,z-2.18);
+    box(root,glass,.05,1.2,3.7,x+2.18,h+1.55,z);box(root,glass,.05,1.2,3.7,x-2.18,h+1.55,z);
+  }
+  function addServiceTruck(root,x,z,rot=0,color=0x7b8a8c){
+    const g=new T.Group();g.position.set(x,-7.2,z);g.rotation.y=rot;root.add(g);
+    const cab=steel(color,.74,.20), dark=steel(0x3b4246,.86,.10), glass=steel(0x53788c,.26,.58), wheel=steel(0x161b1e,.98,0);
+    box(g,cab,4.6,1.7,2.7,0,1.2,0);box(g,cab,2.2,1.5,2.5,-2.9,1.35,0);box(g,glass,1.5,.75,2.35,-3.25,1.7,0);
+    box(g,dark,7.4,.28,2.95,0,.38,0);for(const wx of [-2.7,-.9,1.7,3.1])for(const wz of [-1,1]){const w=mesh(g,new T.CylinderGeometry(.56,.56,.44,12),wheel,wx,0,wz*1.25);w.rotation.z=Math.PI/2;}
+    box(g,dark,1.8,.14,2.7,2.25,2.05,0);return g;
+  }
+  function addSandbagLine(root,x,z,len=10,rot=0){
+    const bag=steel(0xa89d79,1,0);
+    for(let i=0;i<len;i++){
+      const ox=(i-(len-1)/2)*.78*Math.cos(rot), oz=(i-(len-1)/2)*.78*Math.sin(rot);
+      const m=box(root,bag,.72,.34,.44,x+ox,-7.62,z+oz);m.rotation.y=rot;
+      if(i%2===0){const top=box(root,bag,.68,.28,.40,x+ox,-7.28,z+oz);top.rotation.y=rot+.08;}
+    }
+  }
+  function addHelipad(root,x,z,size=11){
+    const mark=steel(0xd9d6c5,.94,0), pad=mesh(root,new T.RingGeometry(size,size+.38,64),mark,x,-7.93,z);pad.rotation.x=-Math.PI/2;
+    box(root,mark,size*1.1,.02,.65,x,-7.92,z);box(root,mark,.65,.02,size*1.25,x,-7.92,z);
+  }
+  function scatterRocks(root,count=28,radius=240){
+    const rock=steel(0x73776f,1,0);
+    for(let i=0;i<count;i++){
+      const a=i*2.37,r=radius+(i%7)*12,x=Math.cos(a)*r,z=Math.sin(a)*r;
+      const b=mesh(root,new T.DodecahedronGeometry(1.2+(i%3)*.35,0),rock,x,-7.35,z);b.scale.set(1.1+(i%4)*.45,.6+(i%3)*.22,.9+(i%5)*.28);b.rotation.set(i,.4*i,.2*i);b.castShadow=true;
+    }
+  }
   function groundPlane(root,color,size=1100){
     const m=mesh(root,new T.PlaneGeometry(size,size),steel(color,1,0),0,-8.16,0);m.rotation.x=-Math.PI/2;m.castShadow=false;return m;
   }
@@ -249,6 +322,12 @@
     windows.forEach(([x,y,z,a],i)=>{dummy.position.set(x,y,z);dummy.rotation.set(0,a,0);dummy.updateMatrix();panes.setMatrixAt(i,dummy.matrix);});root.add(panes);
     const poles=steel(0x3b4748,.7,.5),lamp=new T.MeshBasicMaterial({color:0xffe3b1});
     for(const x of [-109,109])for(const z of [-85,-35,15,65]){strut(root,V(x,-8,z),V(x,3,z),.12,poles);box(root,lamp,1.7,.22,.7,x,3,z);box(root,steel(0x3d6553),3,1,6,x,-7.4,z+9);}
+    addFenceLine(root,-132,-132,132,-132,15); addFenceLine(root,-132,132,132,132,15);
+    addFenceLine(root,-132,-132,-132,132,15); addFenceLine(root,132,-132,132,132,15);
+    addServiceTruck(root,-88,88,.45,0x7f7a67); addServiceTruck(root,86,-92,-.55,0x697b87);
+    addContainer(root,-146,-5.45,16,0x7a7d73,Math.PI/2,1); addContainer(root,148,-5.45,-20,0x6b7381,Math.PI/2,1);
+    addWatchTower(root,-144,144,17); addWatchTower(root,144,-144,17);
+    addLightPole(root,-18,0,14); addLightPole(root,18,0,14);
     return root;
   }
   function buildRidge(){
@@ -275,6 +354,10 @@
     const pad=mesh(root,new T.RingGeometry(8.4,8.8,48),line,0,-7.94,35);pad.rotation.x=-Math.PI/2;
     const tower=steel(0x525e5f,.7,.6);for(const x of [-1,1])strut(root,V(-122+x,-8,-72),V(-122,28,-72),.18,tower);
     const dish=mesh(root,new T.SphereGeometry(3,16,8,0,Math.PI*2,0,Math.PI/2),steel(0xb6bcb4),-122,22,-72);dish.rotation.x=Math.PI/4;
+    addFenceLine(root,-108,-108,108,-108,14); addFenceLine(root,-108,108,108,108,14);
+    addFenceLine(root,-108,-108,-108,108,14); addFenceLine(root,108,-108,108,108,14);
+    addHelipad(root,-36,42,7.5); addServiceTruck(root,-48,26,.3,0x64756b); addContainer(root,84,-5.45,-104,0x736d61,.06,1);
+    addSandbagLine(root,-120,-62,12,Math.PI/2); addWatchTower(root,118,114,16); scatterRocks(root,22,250);
     return root;
   }
   function buildNightLights(){
@@ -322,6 +405,13 @@
     treePositions.forEach((p,i)=>{dummy.position.copy(p).add(V(0,3,0));dummy.updateMatrix();trunks.setMatrixAt(i,dummy.matrix);dummy.position.y=0;dummy.updateMatrix();leaves.setMatrixAt(i,dummy.matrix);});trunks.castShadow=leaves.castShadow=true;root.add(trunks,leaves);
     const mountainMat=steel(0x79816e,1,0);for(let i=0;i<26;i++){const a=i/26*Math.PI*2;const mountain=mesh(root,new T.SphereGeometry(1,12,8),mountainMat,Math.sin(a)*950,-30,Math.cos(a)*950);mountain.scale.set(150+(i%3)*40,130+(i*17%120),150+(i%4)*25);mountain.castShadow=false;}
     for(const side of [-565,565]){box(root,line,2,.04,1130,side,-7.93,0);box(root,line,1130,.04,2,0,-7.93,side);}
+    addFenceLine(root,-540,-540,540,-540,20); addFenceLine(root,-540,540,540,540,20);
+    addFenceLine(root,-540,-540,-540,540,20); addFenceLine(root,540,-540,540,540,20);
+    addWatchTower(root,-522,-522,19); addWatchTower(root,522,522,19);
+    addLightPole(root,-390,-390,13); addLightPole(root,0,-390,13); addLightPole(root,390,-390,13);
+    addServiceTruck(root,102,118,.2,0x7d8a73); addServiceTruck(root,-122,-96,-.45,0x8b8068);
+    addContainer(root,-210,-5.45,222,0x727f89,.2,1); addContainer(root,-198,-5.45,222,0x7b6d63,.2,1); addContainer(root,258,-5.45,-208,0x66746b,-.3,1);
+    addSandbagLine(root,22,386,14,0); scatterRocks(root,30,560);
     return root;
   }
   function prepareMapColliders(root,key){
@@ -363,38 +453,3 @@
     return `<div class="eyebrow">UÇUŞ ORTAMLARI</div><h1>Harita seç</h1><p>Dört arenada kampanya, Kaçış Vadisi’nde ayrı kovalamaca modu oynanır. Görev ilerlemen ortaktır; süre, puan ve isabet rekorların harita başına ayrı tutulur.</p><div class="map-grid">${MAPS.map(m=>`<button class="map-card ${profile.selectedMap===m.id?'selected':''}" data-action="map-${m.id}" aria-pressed="${profile.selectedMap===m.id}"><svg viewBox="0 0 320 160" role="img" aria-label="${m.name} ortam çizimi" style="background:#${m.sky.toString(16).padStart(6,'0')}">${art[m.id]}</svg><span class="map-copy"><small>${m.tag}</small><strong>${m.name}</strong><span>${m.description}</span><b>${m.chaseOnly?'KOVALAMACA MODUNU AÇ':profile.selectedMap===m.id?'✓ SEÇİLİ ORTAM':'BU ORTAMI SEÇ'}</b></span></button>`).join('')}</div><div class="menu-actions">${actionButton('play','SEÇİLİ HARİTADA GÖREVE BAŞLA','primary')}${actionButton('practice','TEST UÇUŞU')}${actionButton('home','ANA MENÜ')}</div>`;
   }
 
-  const ENEMY_PALETTE = {scout:0x64695f,striker:0x50574a,armored:0x414746,boss:0x3d403b};
-  function makeDrone(enemy = false, type = 'scout', modelId=activeDroneId()) {
-    const root = new T.Group(), body = new T.Group(); root.add(body);
-    const model=droneById(modelId),paint=dronePaint(modelId);
-    const finish={factory:[.64,.32],solid:[.42,.18],metallic:[.23,.82],matte:[.96,.03]}[paint.finish];
-    const shell=steel(enemy?ENEMY_PALETTE[type]:paint.color,enemy ? .64 : finish[0],enemy ? .32 : finish[1]);
-    root.userData.modelId=enemy?null:model.id;root.userData.shell=shell;root.userData.paint=paint;
-    const carbon = steel(0x252c2f, .77, .18), alloy = steel(0x646e73, .38, .78);
-    const rubber = steel(0x131a1c, .97, 0), lens = steel(0x173143, .16, .65);
-    const red = new T.MeshBasicMaterial({color: enemy ? 0xed624c : 0xa4322b});
-    const green = new T.MeshBasicMaterial({color: enemy ? 0xea785b : paint.led});
-    const mid=box(body,shell,1.3,.46,1.95,0,.05,0);
-    const nose=box(body,shell,1.05,.3,.62,0,-.015,-1.02);nose.rotation.x=-.18;
-    box(body,carbon,1.15,.06,1.5,0,.30,.05);
-    for(const side of [-1,1]){
-      const panel=box(body,shell,.18,.36,1.6,side*.7,.02,.13);panel.rotation.z=side*.16;
-      box(body,alloy,.10,.03,.18,side*.47,.34,-.48);
-      box(body,alloy,.10,.03,.18,side*.47,.34,.54);
-      // Paired forward weapon barrels align with the projectile origins.
-      const barrel=mesh(body,new T.CylinderGeometry(.065,.09,1.25,10),carbon,side*.78,-.24,-1.3);
-      barrel.rotation.x=Math.PI/2;
-      const collar=mesh(body,new T.CylinderGeometry(.12,.12,.22,10),alloy,side*.78,-.24,-1.72);
-      collar.rotation.x=Math.PI/2;
-    }
-    box(body, carbon, .88, .23, 1.18, 0, .40, .12);
-    box(body, alloy, .13, .025, .91, -.25, .53, .15);
-    box(body, alloy, .13, .025, .91, .25, .53, .15);
-    for (const x of [-.61, .61]) for (let z = -.1; z < .67; z += .14)
-      box(body, carbon, .09, .05, .06, x, .25, z);
-    const cameraBall = mesh(body, new T.SphereGeometry(.27, 12, 8), carbon, 0, -.24, -1.05);
-    const lensMesh = mesh(body, new T.CylinderGeometry(.145, .17, .17, 12), lens, 0, -.25, -1.30);
-    lensMesh.rotation.x = Math.PI / 2;
-    box(body, alloy, .11, .22, .1, -.32, -.23, -1.0);
-    box(body, alloy, .11, .22, .1, .32, -.23, -1.0);
-    root.userData.rotors = [];
