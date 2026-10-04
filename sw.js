@@ -1,4 +1,4 @@
-var CACHE_NAME='drone-war-offline-v12-polish-pass';
+var CACHE_NAME='drone-war-offline-v13-polish-fixes';
 var CORE=[
   '/',
   '/manifest.webmanifest',
