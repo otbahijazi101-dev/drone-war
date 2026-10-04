@@ -259,13 +259,35 @@
     sound(mode==='roll'?590:520,.09,.025);return true;
   }
   const velocity = V(), joy = {x: 0, y: 0};
+  const gamepadAxis={moveX:0,moveY:0,lookX:0,lookY:0};let gamepadConnected=false,gamepadPrev={missile:false,flip:false,reload:false,camera:false};
+  let playerDamageFxTimer=0;
+  function pollGamepad(dt){
+    if(!navigator.getGamepads)return;
+    const pads=navigator.getGamepads(),pad=Array.from(pads||[]).find(p=>p&&p.connected);
+    if(!pad){
+      if(gamepadConnected)stopPrimary('gamepad');
+      gamepadConnected=false;gamepadButtons={};gamepadAxis.moveX=gamepadAxis.moveY=gamepadAxis.lookX=gamepadAxis.lookY=0;return;
+    }
+    if(!gamepadConnected){gamepadConnected=true;notify('Gamepad bağlı · RT ateş · LT füze · LB takviye');}
+    const dead=v=>Math.abs(v)<.14?0:v;
+    gamepadAxis.moveX=dead(pad.axes?.[0]||0);gamepadAxis.moveY=dead(pad.axes?.[1]||0);
+    gamepadAxis.lookX=dead(pad.axes?.[2]||0);gamepadAxis.lookY=dead(pad.axes?.[3]||0);
+    gamepadButtons.boost=!!pad.buttons?.[4]?.pressed;
+    const fire=!!pad.buttons?.[7]?.pressed;if(fire)startPrimary('gamepad');else stopPrimary('gamepad');
+    const missile=!!pad.buttons?.[6]?.pressed;if(missile&&!gamepadPrev.missile)pendingMissile=true;gamepadPrev.missile=missile;
+    const flip=!!pad.buttons?.[0]?.pressed;if(flip&&!gamepadPrev.flip)startFlip('front',1);gamepadPrev.flip=flip;
+    const reload=!!pad.buttons?.[1]?.pressed;if(reload&&!gamepadPrev.reload)beginReload();gamepadPrev.reload=reload;
+    const cam=!!pad.buttons?.[3]?.pressed;if(cam&&!gamepadPrev.camera)toggleCamera();gamepadPrev.camera=cam;
+    targetYaw-=gamepadAxis.lookX*1.65*dt;
+    altitudeTarget=clamp(altitudeTarget-gamepadAxis.lookY*13*dt,CFG.minAltitude,flightCeiling());
+  }
   let keys = {}, ascend = false, descend = false;
   let lastMouseX = null, lastMouseY = null, lookPointer = null, lastTouchX = 0, lastTouchY = 0;
   const radarContext = ui.radar.getContext('2d');
   function heading() { return V(-Math.sin(yaw), 0, -Math.cos(yaw)); }
   function clearInputs() {
     resetTouchInputs();const oldLook=lookPointer;primaryHeld=false;primaryPointer=null;primaryCooldown=0;lookPointer=null;releaseCapture(canvas,oldLook);
-    keys = {}; ascend = descend = false; joy.x = joy.y = 0;
+    keys = {}; ascend = descend = false; joy.x = joy.y = 0; gamepadAxis.moveX=gamepadAxis.moveY=0;
     lastMouseX = lastMouseY = null; lookPointer = null; $('nub').style.transform = '';
   }
   function notify(text) { ui.notice.textContent = text; noticeTime = 2.4; ui.notice.classList.add('on'); }
@@ -439,7 +461,7 @@
     $('reloadButton').disabled=reloadRemaining>0||ammo===MAGAZINE;
     $('missileKey').textContent=keyLabel(profile.settings.bindings.missile);
     const binds=profile.settings.bindings;
-    $('flightHelp').textContent=`${keyLabel(binds.forward)}/${keyLabel(binds.backward)} uçuş · ${keyLabel(binds.left)}/${keyLabel(binds.right)} dönüş · Sol tuş basılı: ateş · ${keyLabel(binds.reload)} doldur · ${keyLabel(binds.missile)} füze · ${keyLabel(binds.boost)} hız · ${keyLabel(binds.pause)} mola`;
+    $('flightHelp').textContent=`${keyLabel(binds.forward)}/${keyLabel(binds.backward)} uçuş · ${keyLabel(binds.left)}/${keyLabel(binds.right)} dönüş · Sol tık ateş · Sağ tık füze · Gamepad RT/LT · ${keyLabel(binds.pause)} mola`;
     $('pauseButton').title=`Oyunu duraklat (${keyLabel(binds.pause)})`;
     $('threatWarning').classList.toggle('hidden',!enemyMissiles.length);
     if(enemyMissiles.length){
@@ -563,7 +585,7 @@
     const enemy={lastSeen:player.position.clone(),unseen:0,mesh:makeDrone(true,type),hp:hitpoints,maxHP:hitpoints,radius:radiusHit,type,dead:false,
       speed:(type==='boss'?4.8:type==='armored'?5.2:type==='scout'?10:7.2)*(endlessActive?endlessSpeedScale(endlessLevel):1),
       velocity:V(),fire:rand(type==='boss'?2.9:4.5,6.5)*(endlessActive?endlessFireScale(endlessLevel):1),phase:angle,orbit:Math.random()<.5?-1:1,
-      state:'attack',stateTime:rand(2,5),evadeCooldown:0,evadeRemaining:0,evadeDirection:V(),missileTimer:rand(12,19),smokeTime:0,attacksAsset:!!missionAsset&&Math.random()<.42};
+      state:'attack',stateTime:rand(2,5),tactic:type==='boss'?'commander':type==='armored'?'suppressor':type==='scout'?(Math.random()<.55?'interceptor':'flanker'):(Math.random()<.5?'flanker':'hunter'),squadSlot:foes.length%4,evadeCooldown:0,evadeRemaining:0,evadeDirection:V(),missileTimer:rand(12,19),smokeTime:0,attacksAsset:!!missionAsset&&Math.random()<.42};
     enemy.mesh.scale.setScalar(type==='boss'?(endlessActive?2.05:1.85):type==='armored'?1.22:type==='scout'?.87:1);
     enemy.mesh.position.copy(pos);scene.add(enemy.mesh);foes.push(enemy);if(endlessActive)endlessSpawned++;return true;
   }
@@ -577,8 +599,8 @@
       if(flipAngle>=Math.PI*2){flipAngle=0;flipActive=false;}
     }
     const previousPosition=player.position.clone();
-    const forward = clamp((pressed('forward') ? 1 : 0) - (pressed('backward') ? 1 : 0) - joy.y, -1, 1);
-    const turn = clamp((pressed('left') ? 1 : 0) - (pressed('right') ? 1 : 0) - joy.x, -1, 1);
+    const forward = clamp((pressed('forward') ? 1 : 0) - (pressed('backward') ? 1 : 0) - joy.y - gamepadAxis.moveY, -1, 1);
+    const turn = clamp((pressed('left') ? 1 : 0) - (pressed('right') ? 1 : 0) - joy.x - gamepadAxis.moveX, -1, 1);
     const fast = pressed('boost') && Math.abs(forward) > .05 && boost > 0;
     const oldYaw=yaw;targetYaw += turn * 1.9 * dt; yaw = damp(yaw, targetYaw, 15, dt);flightLog.turn+=Math.abs(yaw-oldYaw);
     const specs=flightStats();boost=clamp(boost+(fast?-30:17)*dt,0,specs.boost);
