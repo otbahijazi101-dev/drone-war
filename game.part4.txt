@@ -288,8 +288,8 @@
     const mat=steel(0x8f9188,.96,.04),stripe=steel(0xc8aa58,.72,.12);
     const g=new T.Group();g.position.set(x,-7.2,z);g.rotation.y=rot;root.add(g);
     g.userData.destructible={hp:4,maxHp:4,kind:'barrier',colliders:[]};(root.userData.destructibles||(root.userData.destructibles=[])).push(g);
-    const core=box(g,mat,4.2,1.45,1.05,0,.55,0);core.userData.destructible=true;
-    const band=box(g,stripe,.35,1.5,1.08,0,.56,0);band.userData.destructible=true;
+    box(g,mat,4.2,1.45,1.05,0,.55,0);
+    box(g,stripe,.35,1.5,1.08,0,.56,0);
     return g;
   }
   function scatterRocks(root,count=28,radius=240){
@@ -441,8 +441,8 @@
     for(const d of (root.userData.destructibles||[]))if(d.userData?.destructible)d.userData.destructible.colliders=[];
     root.traverse(o=>{if(o.isMesh&&!o.isInstancedMesh&&o.geometry?.type==='BoxGeometry'&&o.geometry.parameters.height>1){
       const b=new T.Box3().setFromObject(o);colliders.push(b);
-      let owner=o;while(owner&&owner!==root&&!owner.userData?.destructible)owner=owner.parent;
-      if(owner?.userData?.destructible)owner.userData.destructible.colliders.push(b);
+      let owner=o;while(owner&&owner!==root&&!(owner.userData?.destructible&&typeof owner.userData.destructible==='object'))owner=owner.parent;
+      if(owner?.userData?.destructible&&typeof owner.userData.destructible==='object')owner.userData.destructible.colliders.push(b);
     }});
     root.userData.flightColliders=colliders;return colliders;
   }
