@@ -380,7 +380,7 @@
     } else if (activeView === 'controls') {
       html=`<div class="eyebrow">UÇUŞ KILAVUZU</div><h1>Kontroller</h1>
         ${touchActive?phoneControlsHTML():`<dl class="control-list">${Object.keys(DEFAULT_KEYS).map(k=>`<dt>${keyLabel(profile.settings.bindings[k])}</dt><dd>${KEY_NAMES[k]}</dd>`).join('')}
-        <dt>Fare / parmak</dt><dd>Yatay hareketle dön; dikey hareketle yüksel veya alçal.</dd><dt>Sol tuş basılı</dt><dd>Seri atış · 36 mermilik şarjör. Silah ısısı yoktur.</dd>
+        <dt>Fare / parmak</dt><dd>Yatay hareketle dön; dikey hareketle yüksel veya alçal.</dd><dt>Sol tuş basılı</dt><dd>Seri atış · 36 mermilik şarjör.</dd>
         <dt>Şarjör</dt><dd>Boşken otomatik, doldurma tuşuyla istediğin zaman yenile. Yedek mermi sınırsız.</dd>
         <dt>Füze uyarısı</dt><dd>Hız takviyesi kullanıp keskin dönüşle yaklaşan füzeden kaç.</dd><dt>Motor hasarı</dt><dd>Hasarlı motorlar itişi ve dengeyi azaltır. Motor durumunu üstteki göstergeden izle.</dd><dt>Tamir</dt><dd>Büyük Kaçış haritasındaki yeşil alanlarda yavaşla ve iniş yardımını aç. Tehdit yokken 4 saniyede tamir edilir.</dd><dt>Telefon</dt><dd>Joystick, irtifa, kamera, seri atış, doldurma, füze ve iniş düğmeleri.</dd></dl>`}
 
