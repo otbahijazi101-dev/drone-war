@@ -235,7 +235,7 @@
   let player, foes = [], bullets = [], enemyShots = [], missiles = [], particles = [];
   let running = false, score = 0, hp = 100, missionKills = 0, boost = 100, clock = 0, missionTime = 0;
   let mission = null, bossSpawned = false;
-  let spawnClock = 1.5, missileCooldown = 0, pendingMissile = false;
+  let spawnClock = 1.5, missileCooldown = 0, pendingMissile = false, missileCinema=0;
   const primaryInterval = .16, MAGAZINE=36;
   let ammo=MAGAZINE,reloadRemaining=0;
   let enemyMissiles=[],damageFlash=0,damageAngle=0,damageDirectionTime=0,hitTime=0,warningBeep=0;
