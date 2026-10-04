@@ -70,6 +70,17 @@
   window.addEventListener('blur',()=>{if(running)pauseMission();else clearInputs();});
   document.addEventListener('visibilitychange', () => { if (document.hidden && running) pauseMission(); else if(document.hidden) clearInputs(); });
   document.addEventListener('pointerlockchange',()=>{lastMouseX=lastMouseY=null;if(document.pointerLockElement!==canvas){primaryHeld=false;primaryPointer=null;}});
+  canvas.addEventListener('contextmenu',e=>{
+    if(!running)return;
+    e.preventDefault();
+    if(!e.repeat)pendingMissile=true;
+  });
+  canvas.addEventListener('pointerdown',e=>{
+    if(running&&!touchActive&&e.pointerType==='mouse'&&e.button===2){
+      e.preventDefault();
+      pendingMissile=true;
+    }
+  });
   canvas.addEventListener('click', () => {
     if (!running || touchActive || document.pointerLockElement === canvas) return;
     try { const promise = canvas.requestPointerLock && canvas.requestPointerLock(); if (promise && promise.catch) promise.catch(() => {}); } catch (_) {}
