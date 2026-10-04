@@ -33,13 +33,14 @@
         noiseBuffer=audioContext.createBuffer(1,audioContext.sampleRate*2,audioContext.sampleRate);
         const data=noiseBuffer.getChannelData(0);let previous=0;
         for(let i=0;i<data.length;i++){previous=(previous+(Math.random()*2-1)*.06)/1.02;data[i]=previous*3.5;}
-        const rotor=audioContext.createOscillator(),rotor2=audioContext.createOscillator(),motorGain=audioContext.createGain();
-        rotor.type='sawtooth';rotor2.type='triangle';motorGain.gain.value=0;
+        const rotor=audioContext.createOscillator(),rotor2=audioContext.createOscillator(),bass=audioContext.createOscillator(),motorGain=audioContext.createGain(),bassGain=audioContext.createGain();
+        rotor.type='sawtooth';rotor2.type='triangle';bass.type='sine';motorGain.gain.value=0;bassGain.gain.value=0;
         const filter=audioContext.createBiquadFilter();filter.type='lowpass';filter.frequency.value=420;
-        rotor.connect(filter);rotor2.connect(filter);filter.connect(motorGain).connect(audioMaster);rotor.start();rotor2.start();
+        const bassFilter=audioContext.createBiquadFilter();bassFilter.type='lowpass';bassFilter.frequency.value=150;
+        rotor.connect(filter);rotor2.connect(filter);filter.connect(motorGain).connect(audioMaster);bass.connect(bassFilter).connect(bassGain).connect(audioMaster);rotor.start();rotor2.start();bass.start();
         const wind=audioContext.createBufferSource(),windGain=audioContext.createGain(),windFilter=audioContext.createBiquadFilter();
         wind.buffer=noiseBuffer;wind.loop=true;windFilter.type='highpass';windFilter.frequency.value=480;windGain.gain.value=0;
-        wind.connect(windFilter).connect(windGain).connect(audioMaster);wind.start();ambient={rotor,rotor2,motorGain,windGain};
+        wind.connect(windFilter).connect(windGain).connect(audioMaster);wind.start();ambient={rotor,rotor2,bass,motorGain,bassGain,windGain,filter,bassFilter};
       }
       if(audioContext.state==='suspended')audioContext.resume().catch(()=>{});
     }catch(_){}
@@ -63,28 +64,38 @@
       gain.gain.setValueAtTime(Math.max(.0001,volume*strength),now);gain.gain.exponentialRampToValueAtTime(.0001,now+duration);
       source.connect(filter).connect(gain).connect(audioMaster);source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};
       source.start(0,Math.random()*.7,duration);
+      if(kind==='blast'||kind==='missile'){
+        const echo=audioContext.createBufferSource(),ef=audioContext.createBiquadFilter(),eg=audioContext.createGain();
+        echo.buffer=noiseBuffer;ef.type='lowpass';ef.frequency.value=kind==='blast'?520:900;eg.gain.setValueAtTime(volume*.22*strength,now+.11);eg.gain.exponentialRampToValueAtTime(.0001,now+.11+duration*.8);
+        echo.connect(ef).connect(eg).connect(audioMaster);echo.onended=()=>{echo.disconnect();ef.disconnect();eg.disconnect();};echo.start(now+.11,Math.random()*.7,Math.max(.08,duration*.8));
+      }
     }catch(_){}
   }
   function updateAudio(){
     if(!ambient||!audioContext)return;
     const now=audioContext.currentTime,enabled=running&&profile.settings.sound, speed=velocity.length();
     audioMaster.gain.setTargetAtTime(profile.settings.sound?profile.settings.volume:0,now,.06);
-    ambient.motorGain.gain.setTargetAtTime(enabled?.018+speed*.0003:0,now,.12);
+    const damageRoughness=player?1-clamp(Math.min(...motorHP)/100,0,1):0;
+    ambient.motorGain.gain.setTargetAtTime(enabled?.018+speed*.0003+damageRoughness*.004:0,now,.12);
+    ambient.bassGain.gain.setTargetAtTime(enabled?.010+speed*.00018:0,now,.14);
     ambient.windGain.gain.setTargetAtTime(enabled?.013+speed*.0011:0,now,.15);
-    ambient.rotor.frequency.setTargetAtTime(80+speed*1.9+Math.abs(velocity.y)*.8,now,.08);
-    ambient.rotor2.frequency.setTargetAtTime(164+speed*3.9,now,.08);
+    ambient.rotor.frequency.setTargetAtTime(80+speed*1.9+Math.abs(velocity.y)*.8+Math.sin(clock*31)*damageRoughness*5,now,.08);
+    ambient.rotor2.frequency.setTargetAtTime(164+speed*3.9,now,.08);ambient.bass.frequency.setTargetAtTime(42+speed*.55,now,.10);
+    ambient.filter.frequency.setTargetAtTime(360+speed*12,now,.12);
   }
   ui.overlay.addEventListener('click',e=>{
     const button=e.target.closest('button[data-action]');if(!button||button.disabled)return;
     const a=button.dataset.action;if(flightFeatureAction(a)||expansionAction(a)||fleetAction(a))return;
     if(a==='touch-layout')openTouchEditor();
     else if(a==='touch-layout-reset'){profile.settings.touchLayout=defaultTouchCustomization();applyTouchCustomization();saveProfile();settingsMessage='Telefon kumandaları varsayılan düzene döndü.';renderPanel();}
-    else if(a==='play')startMission(selectedMission);
+    else if(a==='play'){briefingReturn=activeView;showPanel('briefing');}
+    else if(a==='briefing-start')startMission(selectedMission);
+    else if(a==='briefing-back')showPanel(briefingReturn||'home');
     else if(a==='training')startMission(1,true);
     else if(a==='retry'){if(practiceActive)startPractice();else if(endlessActive)startEndless();else if(isChase())startChase();else startMission(selectedMission);}
     else if(a==='resume')resumeMission();
     else if(a==='leave'){if(practiceActive)finishPractice();else if(endlessActive)finishEndless();else{mission=null;reset();showPanel('home');}}
-    else if(a==='next'){selectedMission=Math.min(profile.unlockedMission,selectedMission+1);startMission(selectedMission);}
+    else if(a==='next'){selectedMission=Math.min(profile.unlockedMission,selectedMission+1);briefingReturn='missions';showPanel('briefing');}
     else if(a==='select'){const id=Number(button.dataset.mission);if(id<=profile.unlockedMission){selectedMission=id;renderPanel();}}
     else if(a.startsWith('buy-'))buyUpgrade(a.slice(4));
     else if(a==='sound'){profile.settings.sound=!profile.settings.sound;initAudio();saveProfile();renderPanel();}
