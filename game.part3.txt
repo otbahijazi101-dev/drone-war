@@ -14,7 +14,7 @@
   }
   function upgradeEffectHTML(up){
     const now=flightStats(),next=flightStats(profile.selectedDrone,{...profile.upgrades,[up.id]:Math.min(UP_MAX,profile.upgrades[up.id]+1)});
-    const lines={hull:[['Azami can','hp','']],weapon:[['Mermi hasarı','damage','']],motor:[['Uçuş hızı','speed',' m/sn'],['Takviye hızı','fast',' m/sn'],['Enerji','boost','']],missile:[['Füze hasarı','missile',''],['Dolum','reload',' sn'],['Kilit','lock',' sn']]}[up.id];
+    const lines={hull:[['Azami can','hp','']],weapon:[['Mermi hasarı','damage','']],motor:[['Uçuş hızı','speed',' m/sn'],['Takviye hızı','fast',' m/sn'],['Enerji','boost','']],missile:[['Füze hasarı','missile',''],['Kilit','lock',' sn']]}[up.id];
     return `<dl class="upgrade-values">${lines.map(([name,key,unit])=>`<div><dt>${name}</dt><dd><b>${numberText(now[key])}${unit}</b>${profile.upgrades[up.id]<UP_MAX?`<span>→</span><strong>${numberText(next[key])}${unit}</strong>`:'<small>MAKS.</small>'}</dd></div>`).join('')}</dl>`;
   }
   function fleetModels(){
