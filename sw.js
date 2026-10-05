@@ -1,4 +1,4 @@
-var CACHE_NAME='drone-war-offline-v16-online-bullet-tracers';
+var CACHE_NAME='drone-war-offline-v17-online-fire-sync';
 var CORE=[
   '/',
   '/manifest.webmanifest',
@@ -12,6 +12,7 @@ var CORE=[
   '/game.part7.txt',
   '/online-loader.js',
   '/online-tracer.js',
+  '/online-fire-fix.js',
   '/online.part1.txt',
   '/online.part2.txt',
   '/online.part3.txt',
