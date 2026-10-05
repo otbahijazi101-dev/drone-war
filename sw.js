@@ -1,4 +1,4 @@
-var CACHE_NAME='drone-war-offline-v17-online-fire-sync';
+var CACHE_NAME='drone-war-offline-v18-online-polish';
 var CORE=[
   '/',
   '/manifest.webmanifest',
@@ -13,6 +13,7 @@ var CORE=[
   '/online-loader.js',
   '/online-tracer.js',
   '/online-fire-fix.js',
+  '/online-polish.js',
   '/online.part1.txt',
   '/online.part2.txt',
   '/online.part3.txt',
