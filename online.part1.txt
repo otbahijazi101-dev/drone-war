@@ -18,8 +18,11 @@ const state={
   identity:null,room:null,friends:[],view:'home',error:'',
   sb:null,channel:null,inMatch:false,isHost:false,team:null,
   kills:{},deaths:{},hp:{},maxHp:{},dead:new Set(),startedAt:0,result:null,
-  pollTimer:null,stateTimer:null,scoreTimer:null,reconnectTimer:null,matchEnded:false
+  pollTimer:null,stateTimer:null,scoreTimer:null,reconnectTimer:null,matchEnded:false,
+  localFireSeq:0,localMissileSeq:0
 };
+const hostFireEvents=new Map(),hostMissileEvents=new Map(),hostHitSeq=new Map(),hostPositions=new Map(),hostLastFireAt=new Map(),hostLastMissileAt=new Map();
+let matchReadyAt=0,reconnectCount=0;
 try{state.identity=JSON.parse(localStorage.getItem(STORE)||'null');}catch(_){}
 
 const style=document.createElement('style');

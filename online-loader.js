@@ -4,7 +4,7 @@
     if(!response.ok)throw new Error(path+' yüklenemedi ('+response.status+')');
     return response.text();
   }))).then(chunks=>{
-    new Function(chunks.join('\n'))();
+    new Function(chunks.join(''))();
   }).catch(error=>{
     console.error('Drone War online module failed:',error);
   });

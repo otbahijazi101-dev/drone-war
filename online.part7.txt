@@ -3,9 +3,10 @@ async function stopRealtime(leaveAfter=true){clearInterval(state.stateTimer);cle
 async function quitMatch(){await stopRealtime(true);state.room=null;state.result=null;state.view='home';overlay.classList.add('open');render();}
 
 window.DroneArenaOnlineNet={
-  onLocalFire(){if(state.inMatch)send('fire',{id:myId()});},
-  onLocalMissile(target){if(state.inMatch)send('missile',{id:myId(),target});},
-  onLocalHit(target,damageValue,weapon){if(state.inMatch)send('hit',{source:myId(),target,damage:damageValue,weapon});},
+  diagnostics(){return {reconnectCount};},
+  onLocalFire(){if(state.inMatch)send('fire',{id:myId(),seq:++state.localFireSeq});},
+  onLocalMissile(target){if(state.inMatch)send('missile',{id:myId(),target,seq:++state.localMissileSeq});},
+  onLocalHit(target,damageValue,weapon){if(state.inMatch)send('hit',{source:myId(),target,damage:damageValue,weapon,shotSeq:weapon==='missile'?state.localMissileSeq:state.localFireSeq});},
   onBossHit(damageValue){if(!state.inMatch)return;if(state.isHost)window.DroneArenaOnlineBridge?.damageBoss?.(damageValue);else send('bossHit',{source:myId(),damage:damageValue});},
   onBossProjectileHit(target,damageValue){if(state.inMatch&&state.isHost)processBossDamagePlayer(target,damageValue);},
   onBossDead(){if(!state.inMatch)return;if(state.isHost)endAsHost('Boss yok edildi',state.room.players.map(x=>x.player_id));else send('bossDead',{id:myId()});},

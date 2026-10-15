@@ -55,6 +55,7 @@ function project(point,frame){
 }
 
 function spawnTracer(id){
+  const level=window.DWOnlineQuality?.level??2;
   const r=remoteStates.get(id),local=window.DroneArenaOnlineBridge?.snapshot?.();
   if(!r||!Array.isArray(r.p)||!local||!Array.isArray(local.p))return;
   const side=(r.__muzzleSide=(r.__muzzleSide||1)*-1),yaw=Number(r.yaw)||0;
@@ -64,13 +65,14 @@ function spawnTracer(id){
   if(dot(dir,towardLocal)>.5)dir=lerpDir(dir,towardLocal,.68);
   const born=performance.now();
   tracers.push({source,dir,born,duration:oldPhone?.32:.42,speed:118,length:oldPhone?6.2:8.5});
-  const max=oldPhone?18:36;if(tracers.length>max)tracers.splice(0,tracers.length-max);
+  const max=oldPhone?10:level===0?12:level===1?22:36;if(tracers.length>max)tracers.splice(0,tracers.length-max);
 }
 
 function render(now){
   ctx.clearRect(0,0,w,h);
   const frame=cameraFrame();
   for(let i=tracers.length-1;i>=0;i--){
+    const level=window.DWOnlineQuality?.level??2;
     const t=tracers[i],age=(now-t.born)/1000;
     if(age>=t.duration){tracers.splice(i,1);continue;}
     if(!frame)continue;
@@ -80,7 +82,7 @@ function render(now){
     const alpha=Math.max(0,1-age/t.duration),depth=Math.min(pa[2],pb[2]);
     const width=Math.max(oldPhone?1.8:2.2,Math.min(oldPhone?4:5.5,72/Math.max(10,depth)));
     ctx.save();ctx.globalAlpha=alpha;ctx.lineCap='round';
-    if(!oldPhone){ctx.shadowColor='#ff563d';ctx.shadowBlur=8;}
+    if(!oldPhone&&level>0){ctx.shadowColor='#ff563d';ctx.shadowBlur=level===2?8:3;}
     const g=ctx.createLinearGradient(pa[0],pa[1],pb[0],pb[1]);g.addColorStop(0,'rgba(255,66,49,.12)');g.addColorStop(.55,'rgba(255,86,61,.95)');g.addColorStop(1,'rgba(255,222,180,1)');
     ctx.strokeStyle=g;ctx.lineWidth=width;ctx.beginPath();ctx.moveTo(pa[0],pa[1]);ctx.lineTo(pb[0],pb[1]);ctx.stroke();
     ctx.shadowBlur=0;ctx.strokeStyle='rgba(255,245,220,.92)';ctx.lineWidth=Math.max(1,width*.28);ctx.beginPath();ctx.moveTo(pa[0],pa[1]);ctx.lineTo(pb[0],pb[1]);ctx.stroke();ctx.restore();
