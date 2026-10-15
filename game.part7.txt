@@ -151,7 +151,7 @@
     remoteMissile:(id)=>{const r=onlineRemotes.get(id);if(r?.mesh?.visible)noiseSound('missile',.22);},
     setScore:(kills,newScore)=>{missionKills=Math.max(0,Number(kills)||0);score=Math.max(0,Number(newScore)||0);},
     setRemoteHP:(id,value)=>{const r=onlineRemotes.get(id);if(r){r.hp=Math.max(0,Number(value)||0);r.dead=r.hp<=0;r.mesh.visible=!r.dead;}},
-    isOnline:()=>onlineActive,isHost:()=>onlineIsHost,mode:()=>onlineMode,showHome:()=>{if(onlineActive)stopOnlineArena();else showPanel('home');}
+    isOnline:()=>onlineActive,isHost:()=>onlineIsHost,mode:()=>onlineMode,hasLineOfSight:(from,to)=>{if(!Array.isArray(from)||!Array.isArray(to))return false;const a=V(Number(from[0])||0,(Number(from[1])||0)+1,Number(from[2])||0),b=V(Number(to[0])||0,(Number(to[1])||0)+1,Number(to[2])||0);return !firstObstacle(a,b,.15);},showHome:()=>{if(onlineActive)stopOnlineArena();else showPanel('home');}
   };
   applyMap(profile.selectedMap);reset();saveProfile();showPanel('home');
   let lastDraw=0;
